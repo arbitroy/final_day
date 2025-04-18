@@ -1,297 +1,154 @@
 #!/usr/bin/env python3
 """
-Shell Debug Program
-
-This program runs specific commands through your shell and captures detailed output,
-error messages, and exit codes to help diagnose issues with the shell implementation.
+Shell test simulation for failing tests
 """
 
-import os
 import subprocess
-import fcntl
 import time
-import sys
+import os
 
-def set_nonblocking(file_obj):
-    """Set a file object to non-blocking mode"""
-    flags = fcntl.fcntl(file_obj, fcntl.F_GETFL)
-    fcntl.fcntl(file_obj, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+def run_shell_command(command, timeout=1.0, wait_after=0.1):
+    """Run a command in the shell and return the output"""
+    print(f"\n[TEST] Running: {command}")
+    print(f"[EXPECTED] See below")
+    
+    try:
+        p = subprocess.Popen(
+            ['./mysh'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        # Send the command
+        p.stdin.write(f"{command}\n")
+        p.stdin.flush()
+        
+        # Wait a bit
+        time.sleep(wait_after)
+        
+        # Exit the shell
+        p.stdin.write("exit\n")
+        p.stdin.flush()
+        
+        # Get output with timeout
+        stdout, stderr = p.communicate(timeout=timeout)
+        
+        # Print results
+        print(f"[STDOUT]\n{stdout.strip()}")
+        if stderr:
+            print(f"[STDERR]\n{stderr.strip()}")
+        
+        return stdout, stderr
+    except subprocess.TimeoutExpired:
+        p.kill()
+        print("[ERROR] Command timed out")
+        return "", ""
 
-def read_all_output(file_obj, timeout=0.5):
-    """Read all available output from a file object with timeout"""
-    start_time = time.time()
-    output = b""
+def test_variable_access():
+    """Test variable access that's timing out"""
+    print("\n=== TESTING VARIABLE ACCESS ===")
+    run_shell_command("x=anothervalue")
+    run_shell_command("echo $x")
     
-    while time.time() - start_time < timeout:
-        try:
-            chunk = file_obj.read(4096)
-            if chunk is None or chunk == b'':
-                break
-            output += chunk
-        except (IOError, BlockingIOError):
-            # No data available yet
-            time.sleep(0.01)
-            continue
-    
-    return output
+    # The next test that times out
+    print("\n=== TESTING VARIABLE ACCESS (TIMEOUT) ===")
+    print("[EXPECTED] Should set variable and echo it without timing out")
+    run_shell_command("x=anothervalue", timeout=2.0)
+    run_shell_command("echo $x", timeout=2.0)
 
-def run_command(command, shell_path="./mysh", timeout=2.0):
-    """Run a command through the shell and capture all output"""
-    print(f"\n{'=' * 50}")
-    print(f"Testing command: {command}")
-    print(f"{'=' * 50}")
+def test_hundred_variables():
+    """Test accessing 100 variables which times out"""
+    print("\n=== TESTING 100 VARIABLES (TIMEOUT) ===")
+    print("[EXPECTED] Should set and access 100 variables without timing out")
+    # Just try first few as an example
+    for i in range(5):
+        run_shell_command(f"x{i}=var{i}", timeout=2.0)
+        run_shell_command(f"echo $x{i}", timeout=2.0)
+
+def test_background_done():
+    """Test that background processes show DONE message"""
+    print("\n=== TESTING BACKGROUND DONE MESSAGES ===")
+    print("[EXPECTED] Should show [1]+ Done sleep 0.5 message after sleep completes")
     
-    # Start the shell process
-    process = subprocess.Popen(
-        [shell_path],
+    # Use a longer timeout to make sure we capture the completion
+    p = subprocess.Popen(
+        ['./mysh'],
+        stdin=subprocess.PIPE, 
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+    
+    p.stdin.write("sleep 0.5 &\n")
+    p.stdin.flush()
+    time.sleep(0.1)  # Wait for command to register
+    p.stdin.write("echo placeholder\n")  # Trigger another prompt
+    p.stdin.flush()
+    time.sleep(1.0)  # Wait for background process to complete
+    p.stdin.write("exit\n")
+    p.stdin.flush()
+    
+    stdout, stderr = p.communicate(timeout=2.0)
+    print(f"[STDOUT]\n{stdout.strip()}")
+    if stderr:
+        print(f"[STDERR]\n{stderr.strip()}")
+
+def test_pipes_with_variables():
+    """Test pipes with variables (timeout issue)"""
+    print("\n=== TESTING PIPES WITH VARIABLES ===")
+    print("[EXPECTED] Variable declaration in pipes not reflected in parent shell")
+    run_shell_command("x=5 | echo $x", timeout=2.0)
+    
+    print("\n[EXPECTED] Variable redefinition in pipes not reflected in parent shell")
+    # Set a variable first
+    p = subprocess.Popen(
+        ['./mysh'],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        universal_newlines=False  # Use binary mode
+        text=True
     )
     
-    # Set stdout and stderr to non-blocking
-    set_nonblocking(process.stdout)
-    set_nonblocking(process.stderr)
-    
-    # Wait for shell to start and display prompt
-    time.sleep(0.2)
-    
-    # Read initial prompt
-    initial_output = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    print(f"Initial prompt: '{initial_output}'")
-    
-    # Send the command
-    print(f"Sending command: '{command}'")
-    process.stdin.write(f"{command}\n".encode('utf-8'))
-    process.stdin.flush()
-    
-    # Wait for command to execute
-    time.sleep(timeout)
-    
-    # Read output and error
-    command_output = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    error_output = read_all_output(process.stderr).decode('utf-8', errors='replace')
-    
-    # Send exit command to terminate shell
-    print("Sending exit command")
-    process.stdin.write(b"exit\n")
-    process.stdin.flush()
-    
-    # Wait for shell to exit
-    try:
-        exit_code = process.wait(timeout=1.0)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        exit_code = -1
-    
-    # Display results
-    print("\nResults:")
-    print(f"Command output: '{command_output}'")
-    print(f"Error output: '{error_output}'")
-    print(f"Exit code: {exit_code}")
-    
-    return command_output, error_output, exit_code
-
-def debug_echo():
-    """Debug the echo command"""
-    print("\n\n== DEBUGGING ECHO COMMAND ==")
-    run_command("echo hello world")
-    run_command("echo 'quoted string'")
-    run_command("echo multiple     spaces")
-
-def debug_variables():
-    """Debug variable assignment and access"""
-    print("\n\n== DEBUGGING VARIABLES ==")
-    run_command("x=test_value")
-    run_command("echo $x")
-    
-    # Test multiple commands in sequence
-    process = subprocess.Popen(
-        ["./mysh"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    
-    set_nonblocking(process.stdout)
-    set_nonblocking(process.stderr)
-    
-    print("\nTesting variable sequence:")
-    
-    # Read initial prompt
-    time.sleep(0.2)
-    initial_output = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    print(f"Initial prompt: '{initial_output}'")
-    
-    # Set variable
-    print("Setting variable: var=value123")
-    process.stdin.write(b"var=value123\n")
-    process.stdin.flush()
+    p.stdin.write("x=5\n")
+    p.stdin.flush()
+    time.sleep(0.1)
+    p.stdin.write("x=6 | echo $x\n")  # Should show "5", not "6"
+    p.stdin.flush()
     time.sleep(0.5)
-    output1 = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    error1 = read_all_output(process.stderr).decode('utf-8', errors='replace')
-    print(f"Output after set: '{output1}'")
-    print(f"Error after set: '{error1}'")
+    p.stdin.write("exit\n")
+    p.stdin.flush()
     
-    # Access variable
-    print("Accessing variable: echo $var")
-    process.stdin.write(b"echo $var\n")
-    process.stdin.flush()
-    time.sleep(0.5)
-    output2 = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    error2 = read_all_output(process.stderr).decode('utf-8', errors='replace')
-    print(f"Output after access: '{output2}'")
-    print(f"Error after access: '{error2}'")
-    
-    # Clean up
-    process.stdin.write(b"exit\n")
-    process.stdin.flush()
-    process.wait(timeout=1.0)
+    stdout, stderr = p.communicate(timeout=2.0)
+    print(f"[STDOUT]\n{stdout.strip()}")
+    if stderr:
+        print(f"[STDERR]\n{stderr.strip()}")
 
-def debug_pipes():
-    """Debug pipe functionality"""
-    print("\n\n== DEBUGGING PIPES ==")
-    run_command("echo hello | cat")
-    run_command("echo test | grep test")
-    run_command("ls | wc -l")
-
-def debug_background():
-    """Debug background processes"""
-    print("\n\n== DEBUGGING BACKGROUND PROCESSES ==")
-    run_command("sleep 1 &", timeout=1.5)
-    
-    # Test background with follow-up command
-    process = subprocess.Popen(
-        ["./mysh"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    
-    set_nonblocking(process.stdout)
-    set_nonblocking(process.stderr)
-    
-    print("\nTesting background with follow-up:")
-    
-    # Read initial prompt
-    time.sleep(0.2)
-    initial_output = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    print(f"Initial prompt: '{initial_output}'")
-    
-    # Start background process
-    print("Starting background process: sleep 0.5 &")
-    process.stdin.write(b"sleep 0.5 &\n")
-    process.stdin.flush()
-    time.sleep(0.5)
-    output1 = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    error1 = read_all_output(process.stderr).decode('utf-8', errors='replace')
-    print(f"Output after background start: '{output1}'")
-    print(f"Error after background start: '{error1}'")
-    
-    # Run follow-up command
-    print("Running follow-up command: echo testing")
-    process.stdin.write(b"echo testing\n")
-    process.stdin.flush()
-    time.sleep(1.0)  # Wait for both commands to complete
-    output2 = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    error2 = read_all_output(process.stderr).decode('utf-8', errors='replace')
-    print(f"Output after follow-up: '{output2}'")
-    print(f"Error after follow-up: '{error2}'")
-    
-    # Clean up
-    process.stdin.write(b"exit\n")
-    process.stdin.flush()
-    process.wait(timeout=1.0)
-
-def debug_signal_handling():
-    """Debug signal handling"""
-    print("\n\n== DEBUGGING SIGNAL HANDLING ==")
-    
-    # Test SIGINT handling
-    process = subprocess.Popen(
-        ["./mysh"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    
-    set_nonblocking(process.stdout)
-    set_nonblocking(process.stderr)
-    
-    print("\nTesting SIGINT handling:")
-    
-    # Read initial prompt
-    time.sleep(0.2)
-    initial_output = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    print(f"Initial prompt: '{initial_output}'")
-    
-    # Send SIGINT
-    print("Sending SIGINT signal")
-    process.send_signal(2)  # SIGINT
-    time.sleep(0.5)
-    output1 = read_all_output(process.stdout).decode('utf-8', errors='replace')
-    error1 = read_all_output(process.stderr).decode('utf-8', errors='replace')
-    print(f"Output after SIGINT: '{output1}'")
-    print(f"Error after SIGINT: '{error1}'")
-    
-    # Check if shell is still responsive
-    print("Testing if shell is still responsive: echo after_signal")
-    try:
-        process.stdin.write(b"echo after_signal\n")
-        process.stdin.flush()
-        time.sleep(0.5)
-        output2 = read_all_output(process.stdout).decode('utf-8', errors='replace')
-        error2 = read_all_output(process.stderr).decode('utf-8', errors='replace')
-        print(f"Output after test command: '{output2}'")
-        print(f"Error after test command: '{error2}'")
-    except BrokenPipeError:
-        print("ERROR: Shell terminated after SIGINT (broken pipe)")
-    
-    # Clean up
-    try:
-        process.stdin.write(b"exit\n")
-        process.stdin.flush()
-        process.wait(timeout=1.0)
-    except:
-        pass
-
-def debug_file_descriptors():
-    """Debug file descriptor management"""
-    print("\n\n== DEBUGGING FILE DESCRIPTOR MANAGEMENT ==")
-    
-    # Create a test file
-    with open("test_file.txt", "w") as f:
-        f.write("Line 1\nLine 2\nLine 3\n")
-    
-    run_command("cat test_file.txt")
-    run_command("wc test_file.txt")
-    run_command("cat test_file.txt | wc")
-    
-    # Clean up
-    os.remove("test_file.txt")
+def test_failing_pipe_chain():
+    """Test that a failing command doesn't stop pipe chain"""
+    print("\n=== TESTING FAILING COMMAND IN PIPE CHAIN ===")
+    print("[EXPECTED] Should show error for cat but still execute echo")
+    run_shell_command("cat nonexistent_file | echo hello", timeout=2.0)
 
 def main():
-    """Main debug function"""
-    # Check if shell exists
-    if not os.path.exists("./mysh"):
-        print("Error: Shell executable './mysh' not found")
-        print("Please compile the shell first with 'make'")
-        return
+    """Run all tests"""
+    print("Running shell tests...")
     
-    print("Shell Debug Program\n")
-    print("This program will run various commands through your shell")
-    print("and capture detailed output to help diagnose issues.")
+    # Create test file for some tests
+    with open("test_file.txt", "w") as f:
+        f.write("This is a test file\nWith multiple lines\n")
     
-    # Run debug functions
-    debug_echo()
-    debug_variables()
-    debug_pipes()
-    debug_background()
-    debug_signal_handling()
-    debug_file_descriptors()
+    # Run tests
+    test_variable_access()
+    test_hundred_variables()
+    test_background_done()
+    test_pipes_with_variables()
+    test_failing_pipe_chain()
     
-    print("\n\nDebug tests completed.")
+    # Clean up
+    if os.path.exists("test_file.txt"):
+        os.remove("test_file.txt")
 
 if __name__ == "__main__":
     main()

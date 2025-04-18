@@ -36,18 +36,21 @@ static size_t expanded_count = 0;
 static size_t expanded_capacity = 0;
 
 // Signal handler for SIGCHLD (child process termination)
-void sigchld_handler(int signum __attribute__((unused)))
-{
+void sigchld_handler(int signum __attribute__((unused))) {
     pid_t pid;
     int status;
 
     // Non-blocking wait to collect all terminated children
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-    {
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         bg_process_t *process = find_bg_process_by_pid(pid);
-        if (process != NULL)
-        {
-            // Queue the message for next prompt
+        if (process != NULL) {
+            // Immediately create and display message for completed process
+            char buffer[MAX_STR_LEN];
+            snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s", process->job_id, process->command);
+            display_message(buffer);
+            display_message("\n");
+            
+            // Also queue the message for next prompt
             mark_process_completed(pid);
         }
     }

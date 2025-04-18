@@ -105,6 +105,7 @@ const char* get_variable(const char *key) {
  * Returns a newly allocated string with variables expanded.
  * The caller must free the returned string when done.
  */
+// In variables.c, update expand_variables function:
 char* expand_variables(const char *str) {
     if (str == NULL) {
         return NULL;
@@ -153,8 +154,9 @@ char* expand_variables(const char *str) {
                         value_len = MAX_STR_LEN - result_len;
                     }
                     
-                    strncat(result, value, value_len);
+                    strncpy(result + result_len, value, value_len);
                     result_len += value_len;
+                    result[result_len] = '\0';
                 }
                 // Empty string for undefined variables - do nothing here
             } else {
