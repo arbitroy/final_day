@@ -44,14 +44,19 @@ void sigchld_handler(int signum __attribute__((unused))) {
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         bg_process_t *process = find_bg_process_by_pid(pid);
         if (process != NULL) {
-            // Immediately create and display message for completed process
+            // Build the message for the completed process
             char buffer[MAX_STR_LEN];
             snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s", process->job_id, process->command);
+            
+            // Display message immediately
             display_message(buffer);
             display_message("\n");
             
             // Also queue the message for next prompt
             mark_process_completed(pid);
+            
+            // FIX: Don't remove the process here, let mark_process_completed handle it
+            // remove_bg_process(pid); <- This was causing issues
         }
     }
 }

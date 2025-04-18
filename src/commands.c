@@ -59,13 +59,19 @@ int add_bg_process(pid_t pid, const char *command) {
     new_process->pid = pid;
     new_process->job_id = next_job_id++;
     new_process->command = strdup(command);
+    if (new_process->command == NULL) {
+        free(new_process);
+        return -1;
+    }
+    
     new_process->next = bg_process_list;
     bg_process_list = new_process;
     
     // Display job information with exact format required by tests
     char buffer[MAX_STR_LEN];
-    snprintf(buffer, MAX_STR_LEN, "[%d] %d\n", new_process->job_id, pid);
+    snprintf(buffer, MAX_STR_LEN, "[%d] %d", new_process->job_id, pid);
     display_message(buffer);
+    display_message("\n");
     
     return new_process->job_id;
 }
@@ -86,7 +92,8 @@ void remove_bg_process(pid_t pid) {
             free(current->command);
             free(current);
             
-            // Reset job ID counter when all processes are done
+            // FIX: Reset job ID counter when all processes are done
+            // Check if this was the last process
             if (bg_process_list == NULL) {
                 next_job_id = 1;
             }
@@ -208,6 +215,8 @@ void mark_process_completed(pid_t pid) {
         // Format must match test expectations EXACTLY: [job_id]+ Done command
         snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s", process->job_id, process->command);
         add_bg_message(buffer);
+        
+        // Remove process from the list
         remove_bg_process(pid);
     }
 }
@@ -451,6 +460,8 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
 }
 
 // Handle a pipeline of commands
+// Full handle_pipeline function with fixes
+
 int handle_pipeline(char **tokens) {
     // Count commands in pipeline
     int cmd_count = 1;
@@ -541,6 +552,10 @@ int handle_pipeline(char **tokens) {
         debug_log("Created pipe %d: read_fd=%d, write_fd=%d", i, pipes[i][0], pipes[i][1]);
     }
 
+    // Duplicate parent's variable environment for child processes
+    // FIX: Make sure each process gets variables from parent
+    variable_t *parent_vars = duplicate_variables();
+    
     // Execute commands
     pid_t pids[cmd_count];
     int status = 0;
@@ -564,6 +579,15 @@ int handle_pipeline(char **tokens) {
         } else if (pids[i] == 0) {
             // Child process
             debug_log("[Child %d] Setting up redirections for command: %s", getpid(), cmds[i][0]);
+            
+            // FIX: Set up variables for the child process
+            if (parent_vars != NULL) {
+                // Give each child a copy of the parent's variables
+                variable_t *child_vars = duplicate_variables();
+                if (child_vars != NULL) {
+                    set_variable_list(child_vars);
+                }
+            }
             
             // Set up redirections
             if (i > 0) {
