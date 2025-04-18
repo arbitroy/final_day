@@ -35,22 +35,20 @@ bn_ptr check_builtin(const char *cmd) {
  */
 
  ssize_t bn_echo(char **tokens) {
-    // Check if we have piped input
-    if (!isatty(STDIN_FILENO)) {
-        char buffer[MAX_STR_LEN];
-        ssize_t bytes_read;
-        while ((bytes_read = read(STDIN_FILENO, buffer, MAX_STR_LEN)) > 0) {
-            write(STDOUT_FILENO, buffer, bytes_read);
-        }
-        return 0;
-    }
-
     // Normal echo behavior
     ssize_t index = 1;
     int first = 1;
     
+    // If no arguments, just print a newline
+    if (tokens[1] == NULL) {
+        write(STDOUT_FILENO, "\n", 1);
+        return 0;
+    }
+    
     while (tokens[index] != NULL) {
-        if (!first) write(STDOUT_FILENO, " ", 1);
+        if (!first) {
+            write(STDOUT_FILENO, " ", 1);
+        }
         write(STDOUT_FILENO, tokens[index], strlen(tokens[index]));
         first = 0;
         index += 1;
