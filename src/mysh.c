@@ -17,16 +17,18 @@
 #define DEBUG_MODE 0
 
 // Debug logging function
-void mysh_debug_log(const char *format, ...) {
-    if (!DEBUG_MODE) return;
-    
+void mysh_debug_log(const char *format, ...)
+{
+    if (!DEBUG_MODE)
+        return;
+
     va_list args;
     va_start(args, format);
-    
+
     fprintf(stderr, "[MYSH_DEBUG] ");
     vfprintf(stderr, format, args);
     fprintf(stderr, "\n");
-    
+
     va_end(args);
 }
 
@@ -36,16 +38,27 @@ static size_t expanded_count = 0;
 static size_t expanded_capacity = 0;
 
 // Signal handler for SIGCHLD (child process termination)
-void sigchld_handler(int signum __attribute__((unused))) {
+void sigchld_handler(int signum __attribute__((unused)))
+{
     pid_t pid;
     int status;
 
     // Non-blocking wait to collect all terminated children
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+    {
         bg_process_t *process = find_bg_process_by_pid(pid);
-        if (process != NULL) {
-            // Only queue the message, let the main loop display it
-            mark_process_completed(pid);
+        if (process != NULL)
+        {
+            // Form the completion message
+            char buffer[MAX_STR_LEN];
+            snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s",
+                     process->job_id, process->command);
+
+            // Add message to queue
+            add_bg_message(buffer);
+
+            // Remove process from the list
+            remove_bg_process(pid);
         }
     }
 }
@@ -127,15 +140,20 @@ int is_variable_assignment(const char *str)
 }
 
 // This function checks if any token in a pipeline is a variable assignment
-int pipeline_has_variable_assignment(char **tokens) {
-    if (tokens == NULL) return 0;
-    
-    for (int i = 0; tokens[i] != NULL; i++) {
+int pipeline_has_variable_assignment(char **tokens)
+{
+    if (tokens == NULL)
+        return 0;
+
+    for (int i = 0; tokens[i] != NULL; i++)
+    {
         // Skip pipe symbols
-        if (strcmp(tokens[i], "|") == 0) continue;
-        
+        if (strcmp(tokens[i], "|") == 0)
+            continue;
+
         // Check for variable assignment
-        if (is_variable_assignment(tokens[i])) {
+        if (is_variable_assignment(tokens[i]))
+        {
             return 1;
         }
     }
@@ -143,16 +161,19 @@ int pipeline_has_variable_assignment(char **tokens) {
 }
 
 // Function to handle variable assignment
-int handle_variable_assignment(const char *str) {
+int handle_variable_assignment(const char *str)
+{
     char *equals = strchr(str, '=');
-    if (equals == NULL) {
+    if (equals == NULL)
+    {
         return -1;
     }
 
     // Extract key (everything before first '=')
     size_t key_len = equals - str;
     char *key = malloc(key_len + 1);
-    if (key == NULL) {
+    if (key == NULL)
+    {
         return -1;
     }
     strncpy(key, str, key_len);
@@ -163,9 +184,11 @@ int handle_variable_assignment(const char *str) {
 
     // Handle variable expansion in value
     char *expanded_value = NULL;
-    if (strchr(value, '$') != NULL) {
+    if (strchr(value, '$') != NULL)
+    {
         expanded_value = expand_variables(value);
-        if (expanded_value != NULL) {
+        if (expanded_value != NULL)
+        {
             value = expanded_value;
         }
     }
@@ -175,7 +198,8 @@ int handle_variable_assignment(const char *str) {
 
     // Clean up
     free(key);
-    if (expanded_value != NULL) {
+    if (expanded_value != NULL)
+    {
         free(expanded_value);
     }
 
@@ -217,65 +241,73 @@ void expand_variables_in_tokens(char **tokens)
 int check_command_exists(const char *cmd)
 {
     mysh_debug_log("Checking if command exists: %s", cmd);
-    
+
     // Check absolute path
-    if (cmd[0] == '/') {
+    if (cmd[0] == '/')
+    {
         mysh_debug_log("Checking absolute path: %s", cmd);
-        if (access(cmd, X_OK) == 0) {
+        if (access(cmd, X_OK) == 0)
+        {
             mysh_debug_log("Command found at absolute path");
             return 1;
         }
         return 0;
     }
-    
+
     // Check in common directories
     char path[MAX_STR_LEN];
-    
+
     // Check in /bin
     snprintf(path, MAX_STR_LEN, "/bin/%s", cmd);
     mysh_debug_log("Checking path: %s", path);
-    if (access(path, X_OK) == 0) {
+    if (access(path, X_OK) == 0)
+    {
         mysh_debug_log("Command found in /bin");
         return 1;
     }
-    
+
     // Check in /usr/bin
     snprintf(path, MAX_STR_LEN, "/usr/bin/%s", cmd);
     mysh_debug_log("Checking path: %s", path);
-    if (access(path, X_OK) == 0) {
+    if (access(path, X_OK) == 0)
+    {
         mysh_debug_log("Command found in /usr/bin");
         return 1;
     }
-    
+
     // Check using PATH environment variable
     const char *path_env = getenv("PATH");
     mysh_debug_log("PATH environment variable: %s", path_env ? path_env : "NULL");
-    
-    if (path_env) {
+
+    if (path_env)
+    {
         char *path_copy = strdup(path_env);
-        if (path_copy == NULL) {
+        if (path_copy == NULL)
+        {
             mysh_debug_log("Failed to allocate memory for PATH copy");
             return 0;
         }
-        
+
         char *dir = strtok(path_copy, ":");
-        
-        while (dir != NULL) {
+
+        while (dir != NULL)
+        {
             snprintf(path, MAX_STR_LEN, "%s/%s", dir, cmd);
             mysh_debug_log("Checking path: %s", path);
-            
-            if (access(path, X_OK) == 0) {
+
+            if (access(path, X_OK) == 0)
+            {
                 mysh_debug_log("Command found in PATH: %s", path);
                 free(path_copy);
                 return 1;
             }
-            
+
             dir = strtok(NULL, ":");
         }
-        
+
         free(path_copy);
     }
-    
+
     mysh_debug_log("Command not found: %s", cmd);
     return 0;
 }
@@ -284,7 +316,7 @@ int main(__attribute__((unused)) int argc,
          __attribute__((unused)) char *argv[])
 {
     mysh_debug_log("mysh starting up");
-    
+
     char *prompt = "mysh$ ";
 
     // Set up signal handlers
@@ -314,17 +346,17 @@ int main(__attribute__((unused)) int argc,
 
     while (1)
     {
+        // Process any background job completion messages
         char *message;
         while ((message = get_next_bg_message()) != NULL)
         {
             display_message(message);
             display_message("\n");
-            free(message);
+            free(message); // Free the message text
         }
 
-        // Display the prompt
+        // Display prompt and get user input
         display_message(prompt);
-
         // Get and tokenize input
         int ret = get_input(input_buf);
 
@@ -339,11 +371,11 @@ int main(__attribute__((unused)) int argc,
         }
 
         mysh_debug_log("Input received: '%s'", input_buf);
-        
+
         // Check if input contains a pipe before tokenizing
         int raw_has_pipe = strchr(input_buf, '|') != NULL;
         mysh_debug_log("Raw input contains pipe: %s", raw_has_pipe ? "YES" : "NO");
-        
+
         size_t token_count = tokenize_input(input_buf, token_arr);
         mysh_debug_log("Tokenized into %zu tokens", token_count);
 
@@ -362,14 +394,16 @@ int main(__attribute__((unused)) int argc,
 
         // Check tokens for pipe character
         int has_pipe = 0;
-        for (size_t i = 0; i < token_count; i++) {
-            if (strcmp(token_arr[i], "|") == 0) {
+        for (size_t i = 0; i < token_count; i++)
+        {
+            if (strcmp(token_arr[i], "|") == 0)
+            {
                 has_pipe = 1;
                 mysh_debug_log("Pipe token detected at position %zu", i);
                 break;
             }
         }
-        
+
         // Expand variables in the tokens
         expand_variables_in_tokens(token_arr);
 
@@ -383,76 +417,88 @@ int main(__attribute__((unused)) int argc,
             }
             continue; // Make sure we're properly continuing
         }
-        
+
         // Special handling for pipes with variable assignments
-        if (has_pipe && pipeline_has_variable_assignment(token_arr)) {
+        if (has_pipe && pipeline_has_variable_assignment(token_arr))
+        {
             mysh_debug_log("Pipeline contains variable assignment, special handling");
-            
+
             // For pipelines with variable assignments, we need to execute
             // as a separate pipeline to prevent variable leakage
             int pipe_fd[2];
-            if (pipe(pipe_fd) == -1) {
+            if (pipe(pipe_fd) == -1)
+            {
                 display_error("ERROR: Failed to create pipe", "");
                 continue;
             }
-            
+
             pid_t pid = fork();
-            if (pid == -1) {
+            if (pid == -1)
+            {
                 display_error("ERROR: Failed to fork", "");
                 close(pipe_fd[0]);
                 close(pipe_fd[1]);
                 continue;
-            } else if (pid == 0) {
+            }
+            else if (pid == 0)
+            {
                 // Child process - execute the pipeline
                 close(pipe_fd[0]); // Close read end
-                
+
                 // Duplicate the variable environment for this process
                 variable_t *child_vars = duplicate_variables();
-                if (child_vars != NULL) {
+                if (child_vars != NULL)
+                {
                     set_variable_list(child_vars);
                 }
-                
+
                 // Execute the pipeline
                 int result = handle_pipeline(token_arr);
-                
+
                 // Clean up and exit
                 close(pipe_fd[1]);
                 exit(result == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
-            } else {
+            }
+            else
+            {
                 // Parent process
                 close(pipe_fd[1]); // Close write end
-                
+
                 // Wait for child process to complete
                 int status;
                 waitpid(pid, &status, 0);
-                
+
                 // Check for any output
                 char buffer[MAX_STR_LEN];
                 ssize_t bytes_read;
-                
-                if ((bytes_read = read(pipe_fd[0], buffer, MAX_STR_LEN - 1)) > 0) {
+
+                if ((bytes_read = read(pipe_fd[0], buffer, MAX_STR_LEN - 1)) > 0)
+                {
                     buffer[bytes_read] = '\0';
                     display_message(buffer);
                 }
-                
+
                 close(pipe_fd[0]);
                 continue;
             }
         }
-        
+
         // If we have a pipe, use the pipeline handler
-        if (has_pipe) {
+        if (has_pipe)
+        {
             mysh_debug_log("Detected pipeline, calling handle_pipeline");
             int err = handle_pipeline(token_arr);
-            if (err == -1) {
+            if (err == -1)
+            {
                 mysh_debug_log("Pipeline handler returned error");
-                if (token_arr[0] != NULL) {
+                if (token_arr[0] != NULL)
+                {
                     display_error("ERROR: Command failed: ", token_arr[0]);
                 }
             }
             continue;
         }
-        
+
         // Handle network commands
         if (strcmp(token_arr[0], "start-server") == 0)
         {

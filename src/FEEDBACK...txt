@@ -1,13 +1,107 @@
-21-April-2025 19:17:34---Student: ..
-21-April-2025 19:17:34----Code compiles:PASS
+21-April-2025 20:19:03---Student: ..
+21-April-2025 20:19:03----Code compiles:PASS
 Launch Suite:
-  21-April-2025 19:17:37----exit causes process to terminate with correct return code:OK
-  21-April-2025 19:17:41----Shell message is displayed, uses exit to test:OK
+  21-April-2025 20:19:06----exit causes process to terminate with correct return code:OK
+  21-April-2025 20:19:10----Shell message is displayed, uses exit to test:OK
 Result:PASS
 Unknown Command Message:
-  21-April-2025 19:17:45----Unknown command should display corresponding message:OK
-  21-April-2025 19:17:49----Multiple unknown commands:OK
+  21-April-2025 20:19:14----Unknown command should display corresponding message:OK
+  21-April-2025 20:19:18----Multiple unknown commands:OK
 Result:PASS
 Long Command Message:
-  21-April-2025 19:17:53----A not-too-long and legal command input is valid:OK
-  21-April-2025 19:17:57----Long command input is invalid:OK
+  21-April-2025 20:19:22----A not-too-long and legal command input is valid:OK
+  21-April-2025 20:19:26----Long command input is invalid:OK
+  21-April-2025 20:19:30----Long command message takes priority:OK
+Result:PASS
+Echo Simple Messages:
+  21-April-2025 20:19:34----Echo of one character displays correctly:OK
+  21-April-2025 20:19:38----Echo of simple message displays correctly:OK
+  21-April-2025 20:19:42----Echo of simple message displays correctly v3:OK
+  21-April-2025 20:19:46----Echo of simple message displays correctly v3:NOT OK
+  21-April-2025 20:19:50----Echo of simple message does not show errors:OK
+Result:FAIL
+Echo Special Characters:
+  21-April-2025 20:19:54----Echo of mixed message displays correctly:OK
+  21-April-2025 20:19:58----echo with quotes has no special meaning:OK
+  21-April-2025 20:20:02----echo ignores extra spaces:OK
+Result:PASS
+Multiple Commands:
+  21-April-2025 20:20:06----Two echo commands display correctly:OK
+  21-April-2025 20:20:10----Two echo commands do not show error:OK
+  21-April-2025 20:20:14----Echo commands work while other commands error:OK
+Result:PASS
+Simple variables accesses:
+  21-April-2025 20:20:18----Declare and access a single variable:OK
+  21-April-2025 20:20:20----Declare and access a single variable:OK
+  21-April-2025 20:20:22----Tests for correct evaluation of variable expansions containing only intitialized variables:OK
+  21-April-2025 20:20:24----Tests for correct evaluation of variable expansions containing variables plus plaintext and uninitialized variables:OK
+Result:PASS
+Variable integration with other commands:
+  21-April-2025 20:20:26----Declare a single variable:OK
+  21-April-2025 20:20:28----Declare and access two variables:OK
+Result:PASS
+Custom variable accesses:
+  21-April-2025 20:20:30----Access variables in separate lines:OK
+  21-April-2025 20:20:32----Access variables in separate lines v2:OK
+Result:PASS
+Echo without variables displays plain text:
+  21-April-2025 20:20:34----Variables access with $ is bound to name:OK
+  21-April-2025 20:20:36----Non-existing variable displays as an empty string:OK
+Result:PASS
+Variable values can be redefined:
+  21-April-2025 20:20:38----Variable value is redefined appropriately:OK
+  21-April-2025 20:20:41----Variable value is redefined appropriately v2:OK
+Result:PASS
+Variable formatting edge cases:
+  21-April-2025 20:20:43----Variables accesses separate by the first equal:NOT OK (TIMEOUT)
+  21-April-2025 20:20:45----Variable declaration with spaces is not supported:OK
+Result:FAIL
+Advanced tests:
+  21-April-2025 20:20:47----Declare and access 100 variables:OK
+Result:PASS
+correct cat argument setup:
+  21-April-2025 20:20:57----Cat on a file that contains one word:OK
+Result:PASS
+cat correctly reads sample files:
+  21-April-2025 20:21:01----Cat on a file that contains multiple words:OK
+  21-April-2025 20:21:05----Cat on a file that contains multiple lines:OK
+Result:PASS
+correct wc argument setup:
+  21-April-2025 20:21:09----wc on an empty file:OK
+Result:PASS
+wc reports correct counts on sample files:
+  21-April-2025 20:21:13----wc on a file that contains mutliple lines:OK
+  21-April-2025 20:21:17----wc on a file that contains mutliple words in a line:OK
+  21-April-2025 20:21:21----wc on a file that contains blank lines:OK
+Result:PASS
+Sample ls runs:
+  21-April-2025 20:21:25----Create a single sub-directory with a single file:OK
+  21-April-2025 20:21:29----Create a single sub-directory with multiple files:OK
+  21-April-2025 20:21:35----ls a directory:OK
+Result:PASS
+Sample cd runs:
+  21-April-2025 20:21:41----cd into a directory and display the files:OK
+  21-April-2025 20:21:47----cd into a nested directory and display the files:OK
+Result:PASS
+ls error handling:
+  21-April-2025 20:21:53----ls on an invalid path reports an error:OK
+Result:PASS
+ls handles edge cases correctly:
+  21-April-2025 20:21:57----ls a single file through a variable identifier:OK
+  21-April-2025 20:22:01----Create a single sub-directory, and ls into that directory:OK
+Result:PASS
+ls filters files correctly:
+  21-April-2025 20:22:05----ls correctly filters files:OK
+  21-April-2025 20:22:09----ls correctly filters files v2:OK
+Result:PASS
+Recursive ls displays files correctly:
+  21-April-2025 20:22:13----Recursive ls with depth 1 does not capture inner files:OK
+  21-April-2025 20:22:19----Recursive ls with depth 2 captures inner files:OK
+  21-April-2025 20:22:25----Recursive ls supports --d argument before --rec:OK
+Result:PASS
+Advanced Tests:
+  21-April-2025 20:22:31----Recursive ls correctly searches files in sub-directories:OK
+Result:PASS
+Sample echo pipes:
+  21-April-2025 20:22:37----Piping echo to echo works the same as normal echo:OK
+  21-April-2025 20:22:41----Piping echo to echo works the same as normal echo:OK

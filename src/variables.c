@@ -25,9 +25,7 @@ int set_variable(const char *key, const char *value) {
         return -1;
     }
     
-    // Debug values
-    printf("[DEBUG] Setting variable: %s = %s\n", key, value);
-    
+
     // Check for spaces in key 
     for (int i = 0; key[i] != '\0'; i++) {
         if (key[i] == ' ' || key[i] == '\t') {
@@ -49,7 +47,6 @@ int set_variable(const char *key, const char *value) {
             // Free old value and update
             free(current->value);
             current->value = new_value;
-            printf("[DEBUG] Updated existing variable\n");
             return 0;
         }
         current = current->next;
@@ -78,7 +75,6 @@ int set_variable(const char *key, const char *value) {
     // Add to beginning of linked list
     new_var->next = var_list;
     var_list = new_var;
-    printf("[DEBUG] Created new variable\n");
 
     return 0;
 }
