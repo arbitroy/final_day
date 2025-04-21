@@ -13,7 +13,7 @@
 #include "commands.h"
 #include "network.h"
 
-// Debug flag - Set to 0 to disable debug logs
+// Debug flag - Set to 1 to enable debug logs
 #define DEBUG_MODE 0
 
 // Debug logging function
@@ -44,19 +44,8 @@ void sigchld_handler(int signum __attribute__((unused))) {
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         bg_process_t *process = find_bg_process_by_pid(pid);
         if (process != NULL) {
-            // Build the message for the completed process
-            char buffer[MAX_STR_LEN];
-            snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s", process->job_id, process->command);
-            
-            // Display message immediately
-            display_message(buffer);
-            display_message("\n");
-            
-            // Also queue the message for next prompt
+            // Only queue the message, let the main loop display it
             mark_process_completed(pid);
-            
-            // FIX: Don't remove the process here, let mark_process_completed handle it
-            // remove_bg_process(pid); <- This was causing issues
         }
     }
 }
@@ -137,35 +126,46 @@ int is_variable_assignment(const char *str)
     return equals != NULL && equals != str;
 }
 
+// This function checks if any token in a pipeline is a variable assignment
+int pipeline_has_variable_assignment(char **tokens) {
+    if (tokens == NULL) return 0;
+    
+    for (int i = 0; tokens[i] != NULL; i++) {
+        // Skip pipe symbols
+        if (strcmp(tokens[i], "|") == 0) continue;
+        
+        // Check for variable assignment
+        if (is_variable_assignment(tokens[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // Function to handle variable assignment
-int handle_variable_assignment(const char *str)
-{
+int handle_variable_assignment(const char *str) {
     char *equals = strchr(str, '=');
-    if (equals == NULL)
-    {
+    if (equals == NULL) {
         return -1;
     }
 
-    // Extract key (everything before '=')
+    // Extract key (everything before first '=')
     size_t key_len = equals - str;
     char *key = malloc(key_len + 1);
-    if (key == NULL)
-    {
+    if (key == NULL) {
         return -1;
     }
     strncpy(key, str, key_len);
     key[key_len] = '\0';
 
-    // Extract value (everything after '=')
+    // Extract value (everything after first '=')
     const char *value = equals + 1;
 
     // Handle variable expansion in value
     char *expanded_value = NULL;
-    if (strchr(value, '$') != NULL)
-    {
+    if (strchr(value, '$') != NULL) {
         expanded_value = expand_variables(value);
-        if (expanded_value != NULL)
-        {
+        if (expanded_value != NULL) {
             value = expanded_value;
         }
     }
@@ -175,8 +175,7 @@ int handle_variable_assignment(const char *str)
 
     // Clean up
     free(key);
-    if (expanded_value != NULL)
-    {
+    if (expanded_value != NULL) {
         free(expanded_value);
     }
 
@@ -217,23 +216,67 @@ void expand_variables_in_tokens(char **tokens)
 // Check if a command exists in PATH
 int check_command_exists(const char *cmd)
 {
-    // Check if the command exists in common directories
+    mysh_debug_log("Checking if command exists: %s", cmd);
+    
+    // Check absolute path
+    if (cmd[0] == '/') {
+        mysh_debug_log("Checking absolute path: %s", cmd);
+        if (access(cmd, X_OK) == 0) {
+            mysh_debug_log("Command found at absolute path");
+            return 1;
+        }
+        return 0;
+    }
+    
+    // Check in common directories
     char path[MAX_STR_LEN];
-
+    
     // Check in /bin
     snprintf(path, MAX_STR_LEN, "/bin/%s", cmd);
-    if (access(path, X_OK) == 0)
-    {
+    mysh_debug_log("Checking path: %s", path);
+    if (access(path, X_OK) == 0) {
+        mysh_debug_log("Command found in /bin");
         return 1;
     }
-
+    
     // Check in /usr/bin
     snprintf(path, MAX_STR_LEN, "/usr/bin/%s", cmd);
-    if (access(path, X_OK) == 0)
-    {
+    mysh_debug_log("Checking path: %s", path);
+    if (access(path, X_OK) == 0) {
+        mysh_debug_log("Command found in /usr/bin");
         return 1;
     }
-
+    
+    // Check using PATH environment variable
+    const char *path_env = getenv("PATH");
+    mysh_debug_log("PATH environment variable: %s", path_env ? path_env : "NULL");
+    
+    if (path_env) {
+        char *path_copy = strdup(path_env);
+        if (path_copy == NULL) {
+            mysh_debug_log("Failed to allocate memory for PATH copy");
+            return 0;
+        }
+        
+        char *dir = strtok(path_copy, ":");
+        
+        while (dir != NULL) {
+            snprintf(path, MAX_STR_LEN, "%s/%s", dir, cmd);
+            mysh_debug_log("Checking path: %s", path);
+            
+            if (access(path, X_OK) == 0) {
+                mysh_debug_log("Command found in PATH: %s", path);
+                free(path_copy);
+                return 1;
+            }
+            
+            dir = strtok(NULL, ":");
+        }
+        
+        free(path_copy);
+    }
+    
+    mysh_debug_log("Command not found: %s", cmd);
     return 0;
 }
 
@@ -339,6 +382,62 @@ int main(__attribute__((unused)) int argc,
                 display_error("ERROR: Failed to set variable: ", token_arr[0]);
             }
             continue; // Make sure we're properly continuing
+        }
+        
+        // Special handling for pipes with variable assignments
+        if (has_pipe && pipeline_has_variable_assignment(token_arr)) {
+            mysh_debug_log("Pipeline contains variable assignment, special handling");
+            
+            // For pipelines with variable assignments, we need to execute
+            // as a separate pipeline to prevent variable leakage
+            int pipe_fd[2];
+            if (pipe(pipe_fd) == -1) {
+                display_error("ERROR: Failed to create pipe", "");
+                continue;
+            }
+            
+            pid_t pid = fork();
+            if (pid == -1) {
+                display_error("ERROR: Failed to fork", "");
+                close(pipe_fd[0]);
+                close(pipe_fd[1]);
+                continue;
+            } else if (pid == 0) {
+                // Child process - execute the pipeline
+                close(pipe_fd[0]); // Close read end
+                
+                // Duplicate the variable environment for this process
+                variable_t *child_vars = duplicate_variables();
+                if (child_vars != NULL) {
+                    set_variable_list(child_vars);
+                }
+                
+                // Execute the pipeline
+                int result = handle_pipeline(token_arr);
+                
+                // Clean up and exit
+                close(pipe_fd[1]);
+                exit(result == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
+            } else {
+                // Parent process
+                close(pipe_fd[1]); // Close write end
+                
+                // Wait for child process to complete
+                int status;
+                waitpid(pid, &status, 0);
+                
+                // Check for any output
+                char buffer[MAX_STR_LEN];
+                ssize_t bytes_read;
+                
+                if ((bytes_read = read(pipe_fd[0], buffer, MAX_STR_LEN - 1)) > 0) {
+                    buffer[bytes_read] = '\0';
+                    display_message(buffer);
+                }
+                
+                close(pipe_fd[0]);
+                continue;
+            }
         }
         
         // If we have a pipe, use the pipeline handler

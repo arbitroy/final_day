@@ -74,27 +74,27 @@ ssize_t get_input(char *in_ptr) {
 size_t tokenize_input(char *in_ptr, char **tokens) {
     io_debug_log("Tokenizing input: '%s'", in_ptr);
     
-    // First, explicitly handle pipe characters by ensuring they are surrounded by spaces
+    // First, explicitly handle special characters by ensuring they are surrounded by spaces
     char *temp_ptr = in_ptr;
     while (*temp_ptr != '\0') {
-        if (*temp_ptr == '|') {
-            io_debug_log("Found pipe character at position %ld", temp_ptr - in_ptr);
+        if (*temp_ptr == '|' || *temp_ptr == '&') {
+            io_debug_log("Found special character '%c' at position %ld", *temp_ptr, temp_ptr - in_ptr);
             
-            // Insert spaces around pipe if needed
+            // Insert spaces around character if needed
             if (temp_ptr > in_ptr && *(temp_ptr-1) != ' ') {
-                io_debug_log("Adding space before pipe");
-                // Shift everything right to make room for a space before |
+                io_debug_log("Adding space before special character");
+                // Shift everything right to make room for a space before character
                 size_t rest_len = strlen(temp_ptr);
                 memmove(temp_ptr + 1, temp_ptr, rest_len + 1); // +1 for null terminator
                 *temp_ptr = ' ';
-                temp_ptr += 2; // Skip the space and pipe
+                temp_ptr += 2; // Skip the space and the special character
             } else {
-                temp_ptr++; // Skip the pipe
+                temp_ptr++; // Skip the special character
             }
             
             if (*temp_ptr != ' ' && *temp_ptr != '\0') {
-                io_debug_log("Adding space after pipe");
-                // Shift everything right to make room for a space after |
+                io_debug_log("Adding space after special character");
+                // Shift everything right to make room for a space after character
                 size_t rest_len = strlen(temp_ptr);
                 memmove(temp_ptr + 1, temp_ptr, rest_len + 1); // +1 for null terminator
                 *temp_ptr = ' ';
@@ -105,7 +105,7 @@ size_t tokenize_input(char *in_ptr, char **tokens) {
         }
     }
     
-    io_debug_log("After pipe spacing: '%s'", in_ptr);
+    io_debug_log("After special character spacing: '%s'", in_ptr);
 
     // Split by whitespace
     size_t token_count = 0;

@@ -18,7 +18,7 @@
 static bg_process_t *bg_process_list = NULL;
 static int next_job_id = 1;
 
-#define DEBUG_MODE 0  // Set to 0 to disable debug logs
+#define DEBUG_MODE 0  // Set to 1 to enable debug logs
 
 void debug_log(const char *format, ...) {
     if (!DEBUG_MODE) return;
@@ -51,8 +51,11 @@ void init_bg_processes() {
 
 // Add a background process
 int add_bg_process(pid_t pid, const char *command) {
+    debug_log("Adding background process: pid=%d, command=%s", pid, command);
+    
     bg_process_t *new_process = malloc(sizeof(bg_process_t));
     if (new_process == NULL) {
+        debug_log("Failed to allocate memory for background process");
         return -1;
     }
     
@@ -60,6 +63,7 @@ int add_bg_process(pid_t pid, const char *command) {
     new_process->job_id = next_job_id++;
     new_process->command = strdup(command);
     if (new_process->command == NULL) {
+        debug_log("Failed to duplicate command string");
         free(new_process);
         return -1;
     }
@@ -73,6 +77,7 @@ int add_bg_process(pid_t pid, const char *command) {
     display_message(buffer);
     display_message("\n");
     
+    debug_log("Added background process: job_id=%d, pid=%d", new_process->job_id, pid);
     return new_process->job_id;
 }
 
@@ -93,7 +98,6 @@ void remove_bg_process(pid_t pid) {
             free(current);
             
             // FIX: Reset job ID counter when all processes are done
-            // Check if this was the last process
             if (bg_process_list == NULL) {
                 next_job_id = 1;
             }
@@ -221,6 +225,7 @@ void mark_process_completed(pid_t pid) {
     }
 }
 
+
 // Handle the kill command
 ssize_t cmd_kill(char **tokens) {
     if (tokens[1] == NULL) {
@@ -258,9 +263,16 @@ ssize_t cmd_ps(char **tokens __attribute__((unused))) {
 
 // Check if a command exists in PATH
 int command_exists(const char *cmd) {
+    debug_log("Checking if command exists: %s", cmd);
+    
     // Check absolute path
     if (cmd[0] == '/') {
-        return access(cmd, X_OK) == 0;
+        debug_log("Checking absolute path: %s", cmd);
+        if (access(cmd, X_OK) == 0) {
+            debug_log("Command found at absolute path");
+            return 1;
+        }
+        return 0;
     }
     
     // Check in common directories
@@ -268,34 +280,50 @@ int command_exists(const char *cmd) {
     
     // Check in /bin
     snprintf(path, MAX_STR_LEN, "/bin/%s", cmd);
+    debug_log("Checking path: %s", path);
     if (access(path, X_OK) == 0) {
+        debug_log("Command found in /bin");
         return 1;
     }
     
     // Check in /usr/bin
     snprintf(path, MAX_STR_LEN, "/usr/bin/%s", cmd);
+    debug_log("Checking path: %s", path);
     if (access(path, X_OK) == 0) {
+        debug_log("Command found in /usr/bin");
         return 1;
     }
     
     // Check using PATH environment variable
-    char *path_env = getenv("PATH");
+    const char *path_env = getenv("PATH");
+    debug_log("PATH environment variable: %s", path_env ? path_env : "NULL");
+    
     if (path_env) {
         char *path_copy = strdup(path_env);
+        if (path_copy == NULL) {
+            debug_log("Failed to allocate memory for PATH copy");
+            return 0;
+        }
+        
         char *dir = strtok(path_copy, ":");
         
         while (dir != NULL) {
             snprintf(path, MAX_STR_LEN, "%s/%s", dir, cmd);
+            debug_log("Checking path: %s", path);
+            
             if (access(path, X_OK) == 0) {
+                debug_log("Command found in PATH: %s", path);
                 free(path_copy);
                 return 1;
             }
+            
             dir = strtok(NULL, ":");
         }
         
         free(path_copy);
     }
     
+    debug_log("Command not found: %s", cmd);
     return 0;
 }
 
@@ -417,7 +445,13 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
             if (command_exists(tokens[0])) {
                 execvp(tokens[0], tokens);
             } else {
-                display_error("ERROR: Unknown command: ", tokens[0]);
+                // IMPORTANT CHANGE: Ensure error message goes to stderr
+                int stderr_copy = dup(STDERR_FILENO);
+                if (stderr_copy != -1) {
+                    display_error("ERROR: Unknown command: ", tokens[0]);
+                    dup2(stderr_copy, STDERR_FILENO);
+                    close(stderr_copy);
+                }
                 exit(EXIT_FAILURE);
             }
             
@@ -453,6 +487,12 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
                 // Foreground process, wait for completion
                 int status;
                 waitpid(pid, &status, 0);
+                
+                // KEY CHANGE: Always return 0 in a pipe chain, even if a command fails
+                // This ensures the pipeline doesn't block waiting for the next command
+                if (input_fd != STDIN_FILENO || output_fd != STDOUT_FILENO) {
+                    return 0; // Always continue pipe chains
+                }
                 return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
             }
         }
@@ -460,8 +500,6 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
 }
 
 // Handle a pipeline of commands
-// Full handle_pipeline function with fixes
-
 int handle_pipeline(char **tokens) {
     // Count commands in pipeline
     int cmd_count = 1;
