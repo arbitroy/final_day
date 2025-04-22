@@ -258,7 +258,22 @@ void mark_process_completed(pid_t pid)
 
         // Remove process from the list
         remove_bg_process(pid);
+        
+        // Force a prompt refresh
+        write(STDOUT_FILENO, "\n", 1);
     }
+}
+
+// Function to check if a string is a variable assignment
+int is_variable_assignment(const char *str)
+{
+    if (str == NULL || str[0] == '\0' || str[0] == '=')
+    {
+        return 0;
+    }
+
+    char *equals = strchr(str, '=');
+    return equals != NULL && equals != str;
 }
 
 // Handle the kill command
@@ -388,6 +403,11 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
         return -1;
     }
 
+    // Skip variable assignments in pipelines - they should only affect child process
+    if (is_variable_assignment(tokens[0]) && (input_fd != STDIN_FILENO || output_fd != STDOUT_FILENO)) {
+        return 0; // Successfully skip variable assignment
+    }
+
     // Check if this is a builtin command
     bn_ptr builtin_fn = check_builtin(tokens[0]);
     if (builtin_fn != NULL)
@@ -478,6 +498,11 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
         {
             dup2(old_stdout, STDOUT_FILENO);
             safe_close(old_stdout);
+        }
+
+        // Always return 0 for pipe segments, even if builtin failed
+        if (input_fd != STDIN_FILENO || output_fd != STDOUT_FILENO) {
+            return 0;  // Continue pipe chain even if command failed
         }
 
         return result;
@@ -826,7 +851,7 @@ int handle_pipeline(char **tokens)
             if (wait_status == 0) {
                 // Process hasn't finished yet, wait with a timeout
                 int waited_ms = 0;
-                const int max_wait_ms = 500; // 500ms max wait
+                const int max_wait_ms = 3000; // Increase timeout to 3 seconds
                 
                 while (waitpid(pids[i], &cmd_status, WNOHANG) == 0 && waited_ms < max_wait_ms) {
                     usleep(10000); // 10ms wait
@@ -834,15 +859,29 @@ int handle_pipeline(char **tokens)
                 }
                 
                 if (waited_ms >= max_wait_ms) {
-                    // Process is taking too long, kill it
+                    // Process is taking too long - try to kill it gracefully first
+                    debug_log("[Parent] Command %d (pid %d) is taking too long, sending SIGTERM", i, pids[i]);
                     kill(pids[i], SIGTERM);
-                    waitpid(pids[i], &cmd_status, 0);
+                    
+                    // Give it a short grace period to terminate
+                    usleep(100000); // 100ms
+                    
+                    // If still not terminated, force kill
+                    if (waitpid(pids[i], &cmd_status, WNOHANG) == 0) {
+                        debug_log("[Parent] Command %d (pid %d) not responding to SIGTERM, sending SIGKILL", i, pids[i]);
+                        kill(pids[i], SIGKILL);
+                        waitpid(pids[i], &cmd_status, 0); // Wait without timeout
+                    }
                 }
             }
             
             // Process the exit status
             if (WIFEXITED(cmd_status)) {
                 status = WEXITSTATUS(cmd_status);
+                // Don't pass failure status up if this is a pipe (all commands should run)
+                if (cmd_count > 1 && i < cmd_count - 1) {
+                    status = 0;
+                }
             }
         }
     }

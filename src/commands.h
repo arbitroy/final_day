@@ -18,6 +18,9 @@ typedef struct bg_message {
     struct bg_message *next;
 } bg_message_t;
 
+// Function to check if a string is a variable assignment
+int is_variable_assignment(const char *str);
+
 // Initialize background process tracking
 void init_bg_processes();
 

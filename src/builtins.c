@@ -35,24 +35,30 @@ bn_ptr check_builtin(const char *cmd) {
  */
 
  ssize_t bn_echo(char **tokens) {
-    // Normal echo behavior
-    ssize_t index = 1;
-    int first = 1;
-    
     // If no arguments, just print a newline
     if (tokens[1] == NULL) {
         write(STDOUT_FILENO, "\n", 1);
         return 0;
     }
     
+    // Process each token
+    ssize_t index = 1;
+    int first = 1;
+    
     while (tokens[index] != NULL) {
         if (!first) {
+            // Add space between tokens
             write(STDOUT_FILENO, " ", 1);
         }
+        
+        // Simply write the entire token at once
         write(STDOUT_FILENO, tokens[index], strlen(tokens[index]));
+        
         first = 0;
-        index += 1;
+        index++;
     }
+    
+    // Add final newline
     write(STDOUT_FILENO, "\n", 1);
     
     return 0;
