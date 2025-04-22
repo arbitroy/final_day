@@ -25,7 +25,6 @@ int set_variable(const char *key, const char *value) {
         return -1;
     }
     
-
     // Check for spaces in key 
     for (int i = 0; key[i] != '\0'; i++) {
         if (key[i] == ' ' || key[i] == '\t') {
