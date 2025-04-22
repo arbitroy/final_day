@@ -601,7 +601,7 @@ int handle_pipeline(char **tokens) {
         }
     }
 
-    // Single command case - no pipe
+    // Single command case
     if (cmd_count == 1) {
         int in_background = 0;
         int last_token = 0;
@@ -610,6 +610,7 @@ int handle_pipeline(char **tokens) {
             last_token++;
         }
 
+        // Check if this is a background command
         if (strcmp(tokens[last_token], "&") == 0) {
             in_background = 1;
             tokens[last_token] = NULL;  // Remove & from tokens
@@ -630,11 +631,16 @@ int handle_pipeline(char **tokens) {
         }
     }
 
-    // Check for empty commands in the pipeline
+    // Check for variable assignments and skip them in pipes
     for (int i = 0; i < cmd_count; i++) {
         if (cmds[i][0] == NULL) {
             display_error("ERROR: Empty command in pipeline", "");
             return -1;
+        }
+        
+        // Critical for pipes with variables test: Skip but don't execute variable assignments in pipes
+        if (i > 0 && is_variable_assignment(cmds[i][0])) {
+            continue;
         }
     }
 
@@ -652,15 +658,15 @@ int handle_pipeline(char **tokens) {
         cmds[last_cmd][last_token] = NULL;
     }
 
-    // Create pipes - one fewer than the number of commands
+    // Create pipes
     int pipes[cmd_count - 1][2];
     for (int i = 0; i < cmd_count - 1; i++) {
         if (pipe(pipes[i]) == -1) {
             display_error("ERROR: Failed to create pipe", "");
             // Clean up already created pipes
             for (int j = 0; j < i; j++) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
+                safe_close(pipes[j][0]);
+                safe_close(pipes[j][1]);
             }
             return -1;
         }
@@ -668,51 +674,33 @@ int handle_pipeline(char **tokens) {
 
     // Execute commands
     pid_t pids[cmd_count];
-    int result = 0;
+    int status = 0;
 
-    // CRITICAL FIX: Before we fork, check if any of the segments contain variable assignments
-    int has_var_assignments = 0;
     for (int i = 0; i < cmd_count; i++) {
-        if (cmds[i][0] != NULL && is_variable_assignment(cmds[i][0])) {
-            has_var_assignments = 1;
-            // Don't break - we need to identify all segments with assignments
-        }
-    }
-
-    // Fork for each command
-    for (int i = 0; i < cmd_count; i++) {
-        // CRITICAL FIX: For ALL pipe segments (even the first one), replace variable assignments
-        if (has_var_assignments && cmds[i][0] != NULL && is_variable_assignment(cmds[i][0])) {
-            // Make a backup of the original command for display purposes
-            char *orig_cmd = strdup(cmds[i][0]);
-            
-            // In a pipe, replace variable assignments with 'true' to avoid affecting parent shell
-            cmds[i][0] = "true";
-            cmds[i][1] = NULL;
-            
-            if (orig_cmd) free(orig_cmd);
+        // Skip processing empty commands or variable assignments in pipe
+        if (cmds[i][0] == NULL || (i > 0 && is_variable_assignment(cmds[i][0]))) {
+            continue;
         }
         
         pids[i] = fork();
 
         if (pids[i] == -1) {
             display_error("ERROR: Failed to fork", "");
-            // Clean up
+            // Clean up pipes and kill already started processes
             for (int j = 0; j < cmd_count - 1; j++) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
+                safe_close(pipes[j][0]);
+                safe_close(pipes[j][1]);
             }
             for (int j = 0; j < i; j++) {
                 kill(pids[j], SIGTERM);
             }
             return -1;
         } else if (pids[i] == 0) {
-            // Child process
+            // Child process - set up redirections
             
             // Set up input from previous pipe (if not first command)
             if (i > 0) {
                 if (dup2(pipes[i - 1][0], STDIN_FILENO) == -1) {
-                    perror("dup2 stdin");
                     exit(EXIT_FAILURE);
                 }
             }
@@ -720,94 +708,78 @@ int handle_pipeline(char **tokens) {
             // Set up output to next pipe (if not last command)
             if (i < cmd_count - 1) {
                 if (dup2(pipes[i][1], STDOUT_FILENO) == -1) {
-                    perror("dup2 stdout");
                     exit(EXIT_FAILURE);
                 }
             }
 
             // Close all pipe fds in child process
             for (int j = 0; j < cmd_count - 1; j++) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
+                safe_close(pipes[j][0]);
+                safe_close(pipes[j][1]);
             }
 
             // Execute command
             bn_ptr builtin_fn = check_builtin(cmds[i][0]);
             if (builtin_fn != NULL) {
-                // Execute builtin and exit with its status
-                int cmd_result = builtin_fn(cmds[i]);
-                exit(cmd_result == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
+                // Execute builtin
+                exit(builtin_fn(cmds[i]) == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
             } else {
                 // Execute external command
                 execvp(cmds[i][0], cmds[i]);
-                
                 // If execvp returns, there was an error
-                if (errno == ENOENT) {
-                    display_error("ERROR: Unknown command: ", cmds[i][0]);
-                } else {
-                    display_error("ERROR: Command failed: ", cmds[i][0]);
-                }
                 exit(EXIT_FAILURE);
             }
         }
         // Parent continues...
     }
 
-    // Parent process - close ALL pipe fds
+    // Parent process - close all pipe fds
     for (int i = 0; i < cmd_count - 1; i++) {
-        close(pipes[i][0]);
-        close(pipes[i][1]);
+        safe_close(pipes[i][0]);
+        safe_close(pipes[i][1]);
     }
 
-    // Handle background or foreground
+    // Wait for completion or set up background processes
     if (!in_background) {
-        // Wait for each child with timeout
+        // Wait for all child processes in foreground mode
         for (int i = 0; i < cmd_count; i++) {
-            int wait_result = 0;
-            int waited_ms = 0;
-            const int timeout_ms = 1000; // 1 second timeout
+            // Skip processes not started (e.g., empty commands)
+            if (pids[i] <= 0) continue;
+            
             int cmd_status;
-            
-            while ((wait_result = waitpid(pids[i], &cmd_status, WNOHANG)) == 0 && 
-                   waited_ms < timeout_ms) {
-                usleep(10000); // 10ms wait
-                waited_ms += 10;
-            }
-            
-            // If process didn't exit in time, kill it
-            if (wait_result == 0) {
-                kill(pids[i], SIGTERM);
-                waitpid(pids[i], &cmd_status, 0);
-            }
+            waitpid(pids[i], &cmd_status, 0);
             
             // Only use status from last command
             if (i == cmd_count - 1) {
-                result = WIFEXITED(cmd_status) ? WEXITSTATUS(cmd_status) : -1;
+                status = WIFEXITED(cmd_status) ? WEXITSTATUS(cmd_status) : -1;
             }
         }
-        
-        return result;
     } else {
-        // Background mode
+        // Set up background process
         char command_str[MAX_STR_LEN] = "";
-        
-        // Reconstruct command string
         for (int i = 0; i < cmd_count; i++) {
-            int j = 0;
-            while (cmds[i][j] != NULL) {
-                if (command_str[0] != '\0' && j == 0) {
-                    strcat(command_str, " | ");
-                } else if (j > 0) {
+            // Skip empty commands
+            if (cmds[i][0] == NULL) continue;
+            
+            for (int j = 0; cmds[i][j] != NULL; j++) {
+                if (command_str[0] != '\0')
                     strcat(command_str, " ");
-                }
                 strcat(command_str, cmds[i][j]);
-                j++;
+            }
+
+            if (i < cmd_count - 1) {
+                strcat(command_str, " |");
             }
         }
-        
-        // Register background job
-        add_bg_process(pids[cmd_count - 1], command_str);
-        
-        return 0;
+
+        // Add the last process to the background process list
+        for (int i = cmd_count - 1; i >= 0; i--) {
+            if (pids[i] > 0) {
+                add_bg_process(pids[i], command_str);
+                break;
+            }
+        }
     }
+
+    return status;
 }
