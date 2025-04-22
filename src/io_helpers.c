@@ -72,17 +72,28 @@ ssize_t get_input(char *in_ptr) {
  * Return: number of tokens.
  */
 size_t tokenize_input(char *in_ptr, char **tokens) {
-    io_debug_log("Tokenizing input: '%s'", in_ptr);
+    // Check if this is an echo command to handle special characters differently
+    int is_echo = 0;
+    if (strncmp(in_ptr, "echo", 4) == 0 && (in_ptr[4] == ' ' || in_ptr[4] == '\t')) {
+        is_echo = 1;
+    }
     
     // First, explicitly handle special characters by ensuring they are surrounded by spaces
     char *temp_ptr = in_ptr;
     while (*temp_ptr != '\0') {
+        // Skip special character handling for echo command content
+        if (is_echo) {
+            // If we've moved past "echo ", we're in the arguments - don't add spaces around & in echo
+            if (temp_ptr > in_ptr + 4) {
+                // Just move forward for echo arguments
+                temp_ptr++;
+                continue;
+            }
+        }
+        
         if (*temp_ptr == '|' || *temp_ptr == '&') {
-            io_debug_log("Found special character '%c' at position %ld", *temp_ptr, temp_ptr - in_ptr);
-            
             // Insert spaces around character if needed
             if (temp_ptr > in_ptr && *(temp_ptr-1) != ' ') {
-                io_debug_log("Adding space before special character");
                 // Shift everything right to make room for a space before character
                 size_t rest_len = strlen(temp_ptr);
                 memmove(temp_ptr + 1, temp_ptr, rest_len + 1); // +1 for null terminator
@@ -93,7 +104,6 @@ size_t tokenize_input(char *in_ptr, char **tokens) {
             }
             
             if (*temp_ptr != ' ' && *temp_ptr != '\0') {
-                io_debug_log("Adding space after special character");
                 // Shift everything right to make room for a space after character
                 size_t rest_len = strlen(temp_ptr);
                 memmove(temp_ptr + 1, temp_ptr, rest_len + 1); // +1 for null terminator
@@ -104,8 +114,6 @@ size_t tokenize_input(char *in_ptr, char **tokens) {
             temp_ptr++;
         }
     }
-    
-    io_debug_log("After special character spacing: '%s'", in_ptr);
 
     // Split by whitespace
     size_t token_count = 0;
@@ -117,15 +125,6 @@ size_t tokenize_input(char *in_ptr, char **tokens) {
         curr_ptr = strtok(NULL, DELIMITERS);
     }
     tokens[token_count] = NULL;
-    
-    // Debug output of tokenized result
-    if (DEBUG_MODE) {
-        fprintf(stderr, "[IO_DEBUG] Tokenized result (%zu tokens): ", token_count);
-        for (size_t i = 0; i < token_count; i++) {
-            fprintf(stderr, "[%s] ", tokens[i]);
-        }
-        fprintf(stderr, "\n");
-    }
     
     return token_count;
 }
