@@ -51,13 +51,8 @@ bn_ptr check_builtin(const char *cmd) {
             write(STDOUT_FILENO, " ", 1);
         }
         
-        // Write the token directly with its exact length
-        const char *token = tokens[index];
-        size_t len = strlen(token);
-        if (write(STDOUT_FILENO, token, len) < 0) {
-            // Handle write error
-            return -1;
-        }
+        // Output the token exactly as it is without any processing
+        write(STDOUT_FILENO, tokens[index], strlen(tokens[index]));
         
         first = 0;
         index++;
