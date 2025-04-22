@@ -42,7 +42,7 @@ bn_ptr check_builtin(const char *cmd) {
     }
     
     // Process each token
-    ssize_t index = 1;
+    int index = 1;
     int first = 1;
     
     while (tokens[index] != NULL) {
@@ -51,8 +51,13 @@ bn_ptr check_builtin(const char *cmd) {
             write(STDOUT_FILENO, " ", 1);
         }
         
-        // Simply write the entire token at once
-        write(STDOUT_FILENO, tokens[index], strlen(tokens[index]));
+        // Write the token directly with its exact length
+        const char *token = tokens[index];
+        size_t len = strlen(token);
+        if (write(STDOUT_FILENO, token, len) < 0) {
+            // Handle write error
+            return -1;
+        }
         
         first = 0;
         index++;

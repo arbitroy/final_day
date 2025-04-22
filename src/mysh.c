@@ -38,19 +38,15 @@ static size_t expanded_count = 0;
 static size_t expanded_capacity = 0;
 
 // Signal handler for SIGCHLD (child process termination)
-void sigchld_handler(int signum __attribute__((unused)))
-{
+void sigchld_handler(int signum __attribute__((unused))) {
     pid_t pid;
     int status;
 
     // Non-blocking wait to collect all terminated children
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-    {
-        mysh_debug_log("Child process %d terminated", pid);
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         bg_process_t *process = find_bg_process_by_pid(pid);
-        if (process != NULL)
-        {
-            // Form the completion message
+        if (process != NULL) {
+            // Form the completion message - EXACT FORMAT expected by tests
             char buffer[MAX_STR_LEN];
             snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s",
                      process->job_id, process->command);
@@ -61,7 +57,7 @@ void sigchld_handler(int signum __attribute__((unused)))
             // Remove process from the list
             remove_bg_process(pid);
 
-            // Signal that we have a message
+            // Signal that we have a message by writing a newline
             write(STDOUT_FILENO, "\n", 1);
         }
     }
@@ -156,19 +152,16 @@ int pipeline_has_variable_assignment(char **tokens)
 }
 
 // Function to handle variable assignment
-int handle_variable_assignment(const char *str)
-{
+int handle_variable_assignment(const char *str) {
     char *equals = strchr(str, '=');
-    if (equals == NULL)
-    {
+    if (equals == NULL) {
         return -1;
     }
 
     // Extract key (everything before first '=')
     size_t key_len = equals - str;
     char *key = malloc(key_len + 1);
-    if (key == NULL)
-    {
+    if (key == NULL) {
         return -1;
     }
     strncpy(key, str, key_len);
@@ -179,11 +172,9 @@ int handle_variable_assignment(const char *str)
 
     // Handle variable expansion in value
     char *expanded_value = NULL;
-    if (strchr(value, '$') != NULL)
-    {
+    if (strchr(value, '$') != NULL) {
         expanded_value = expand_variables(value);
-        if (expanded_value != NULL)
-        {
+        if (expanded_value != NULL) {
             value = expanded_value;
         }
     }
@@ -193,8 +184,7 @@ int handle_variable_assignment(const char *str)
 
     // Clean up
     free(key);
-    if (expanded_value != NULL)
-    {
+    if (expanded_value != NULL) {
         free(expanded_value);
     }
 

@@ -98,36 +98,18 @@ void handle_new_connection(int server_fd) {
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
     
-    // Verify server socket is valid
-    if (fcntl(server_fd, F_GETFD) < 0) {
-        return;
-    }
-    
-    // Check server socket error state
-    int error = 0;
-    socklen_t len = sizeof(error);
-    if (getsockopt(server_fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-        return;
-    }
-    
     int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
     if (client_fd < 0) {
         return;
     }
 
-    // Set non-blocking
-    int flags = fcntl(client_fd, F_GETFL, 0);
-    fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
-    
-    // Set keepalive for client socket
+    // Set socket options for better reliability
     int keep_alive = 1;
     setsockopt(client_fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(keep_alive));
-
-    // Set client socket linger option
-    struct linger lin;
-    lin.l_onoff = 0;
-    lin.l_linger = 0;
-    setsockopt(client_fd, SOL_SOCKET, SO_LINGER, (const char *)&lin, sizeof(lin));
+    
+    // Set non-blocking mode
+    int flags = fcntl(client_fd, F_GETFL, 0);
+    fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
 
     // Find an available slot in the client array
     int slot = -1;
@@ -148,7 +130,7 @@ void handle_new_connection(int server_fd) {
     connected_clients++;
     client_count++;
 
-    // Send a welcome message to the new client
+    // Send a welcome message to the new client - EXACT format needed for tests
     char welcome[BUFFER_SIZE];
     snprintf(welcome, BUFFER_SIZE, "Welcome! You are client#%d\n", client_count);
     send(client_fd, welcome, strlen(welcome), 0);
@@ -161,31 +143,12 @@ void handle_new_connection(int server_fd) {
 
 // Handle received data from a client
 void handle_client_data(int client_fd, int client_index) {
-    // Verify the socket is valid
-    if (fcntl(client_fd, F_GETFD) < 0) {
-        client_sockets[client_index] = -1;
-        connected_clients--;
-        return;
-    }
-    
-    // Check socket error state
-    int error = 0;
-    socklen_t len = sizeof(error);
-    if (getsockopt(client_fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-        close(client_fd);
-        client_sockets[client_index] = -1;
-        connected_clients--;
-        return;
-    }
-    
     char buffer[MAX_MSG_SIZE];
     ssize_t bytes_read = recv(client_fd, buffer, MAX_MSG_SIZE - 1, 0);
 
     if (bytes_read <= 0) {
-        // Properly close the socket
+        // Connection closed or error
         close(client_fd);
-        
-        // Mark slot as available
         client_sockets[client_index] = -1;
         connected_clients--;
         return;
@@ -194,7 +157,7 @@ void handle_client_data(int client_fd, int client_index) {
     // Null-terminate the received data
     buffer[bytes_read] = '\0';
 
-    // Remove newline character if present
+    // Remove trailing newline if present
     if (bytes_read > 0 && buffer[bytes_read - 1] == '\n') {
         buffer[bytes_read - 1] = '\0';
     }
@@ -202,13 +165,14 @@ void handle_client_data(int client_fd, int client_index) {
     // Check for special command
     if (strcmp(buffer, "\\connected") == 0) {
         char response[BUFFER_SIZE];
+        // Format must EXACTLY match test expectations
         snprintf(response, BUFFER_SIZE, "client#%d: There are %d clients connected\n",
                 client_index + 1, connected_clients);
 
         // Send to the client that requested it
         send(client_fd, response, strlen(response), 0);
         
-        // Also send to other clients
+        // Also broadcast to other clients
         broadcast_message(response, client_fd);
         
         // Display on server
@@ -216,7 +180,7 @@ void handle_client_data(int client_fd, int client_index) {
         return;
     }
 
-    // Format message with client ID
+    // Format message with client ID - EXACT format needed for tests
     char formatted_msg[BUFFER_SIZE];
     snprintf(formatted_msg, BUFFER_SIZE, "client#%d: %s\n", client_index + 1, buffer);
 
@@ -530,17 +494,6 @@ int is_port_available(int port) {
 
 // Send a message to a specified host/port
 int send_message(int port, const char *hostname, const char *message) {
-    // Check if server is running on this port locally
-    if (port == server_info.port && server_info.running) {
-        // Verify server process is actually running
-        if (kill(server_info.server_pid, 0) < 0) {
-            if (errno == ESRCH) {
-                server_info.running = 0;
-                server_info.port = -1;
-            }
-        }
-    }
-    
     // Check arguments
     if (port <= 0 || port > 65535 || hostname == NULL || message == NULL) {
         return -1;
@@ -552,84 +505,51 @@ int send_message(int port, const char *hostname, const char *message) {
         return -1;
     }
 
-    // Get host information
-    struct hostent *host = gethostbyname(hostname);
-    if (host == NULL) {
-        close(sockfd);
-        return -1;
-    }
-
-    // Set up server address
+    // Get host information - try both IP address and hostname
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
-
-    // Connect to server with a timeout
-    struct timeval tv;
-    tv.tv_sec = 2;  // 2 second timeout
-    tv.tv_usec = 0;
     
-    // Set socket option for timeout
+    // Try as IP first
+    if (inet_pton(AF_INET, hostname, &server_addr.sin_addr) <= 0) {
+        // Not a valid IP, try hostname lookup
+        struct hostent *host = gethostbyname(hostname);
+        if (host == NULL) {
+            close(sockfd);
+            return -1;
+        }
+        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+    }
+    
+    // Set socket options
+    int optval = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    
+    // Set timeout
+    struct timeval tv;
+    tv.tv_sec = 1;  // 1 second timeout
+    tv.tv_usec = 0;
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
 
-    // Try to establish a connection several times
-    int retries = 3;
-    int connected = 0;
-    
-    while (retries-- > 0 && !connected) {
-        if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
-            connected = 1;
-            break;
-        }
-        
-        // Small delay before retry
-        usleep(100000);  // 100ms
-    }
-    
-    if (!connected) {
+    // Connect to server
+    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         close(sockfd);
-        
-        // If our server is supposed to be running, check if it's actually running
-        if (port == server_info.port && server_info.running) {
-            // Check if process exists
-            if (kill(server_info.server_pid, 0) < 0 && errno == ESRCH) {
-                cleanup_server();
-                server_info.server_pid = -1;
-                server_info.running = 0;
-                server_info.port = -1;
-            }
-        }
-        
         return -1;
     }
 
     // Send message
-    ssize_t sent = send(sockfd, message, strlen(message), 0);
+    size_t msg_len = strlen(message);
+    ssize_t sent = send(sockfd, message, msg_len, 0);
     if (sent < 0) {
         close(sockfd);
         return -1;
     }
 
     // Add newline if not present
-    if (sent > 0 && message[strlen(message) - 1] != '\n') {
+    if (sent > 0 && message[msg_len - 1] != '\n') {
         send(sockfd, "\n", 1, 0);
-    }
-
-    // Read server response to confirm message was processed
-    char response[64];
-    struct timeval recv_tv;
-    recv_tv.tv_sec = 1;
-    recv_tv.tv_usec = 0;
-    
-    fd_set read_set;
-    FD_ZERO(&read_set);
-    FD_SET(sockfd, &read_set);
-    
-    if (select(sockfd + 1, &read_set, NULL, NULL, &recv_tv) > 0) {
-        recv(sockfd, response, sizeof(response) - 1, MSG_DONTWAIT);
     }
 
     // Close socket
@@ -657,15 +577,22 @@ ssize_t cmd_send(char **tokens) {
         return -1;
     }
     
-    // Parse port number
+    // Parse port number 
     int port = atoi(tokens[1]);
     if (port <= 0 || port > 65535) {
         display_error("ERROR: Invalid port number", "");
         return -1;
     }
     
-    // Get hostname
+    // Get hostname - handle variable expansion if needed
     char *hostname = tokens[2];
+    char *expanded_hostname = NULL;
+    if (strchr(hostname, '$') != NULL) {
+        expanded_hostname = expand_variables(hostname);
+        if (expanded_hostname != NULL) {
+            hostname = expanded_hostname;
+        }
+    }
     
     // Combine all remaining tokens into a message
     char message[BUFFER_SIZE] = "";
@@ -673,18 +600,53 @@ ssize_t cmd_send(char **tokens) {
         if (i > 3) {
             strcat(message, " ");  // Add space between tokens
         }
-        strcat(message, tokens[i]);
+        
+        // Handle variable expansion in message parts
+        if (strchr(tokens[i], '$') != NULL) {
+            char *expanded = expand_variables(tokens[i]);
+            if (expanded != NULL) {
+                strcat(message, expanded);
+                free(expanded);
+            } else {
+                strcat(message, tokens[i]);
+            }
+        } else {
+            strcat(message, tokens[i]);
+        }
     }
     
+    // Normalize spaces in message
+    char normalized_message[BUFFER_SIZE];
+    int j = 0, in_space = 0;
+    for (size_t i = 0; message[i] != '\0'; i++) {
+        if (message[i] == ' ' || message[i] == '\t') {
+            if (!in_space) {
+                normalized_message[j++] = ' ';
+                in_space = 1;
+            }
+        } else {
+            normalized_message[j++] = message[i];
+            in_space = 0;
+        }
+    }
+    normalized_message[j] = '\0';
+    
     // Send the message
-    if (send_message(port, hostname, message) < 0) {
+    if (send_message(port, hostname, normalized_message) < 0) {
         display_error("ERROR: Failed to send message", "");
+        if (expanded_hostname != NULL) {
+            free(expanded_hostname);
+        }
         return -1;
     }
     
-    // Also display the message on our screen
-    display_message(message);
+    // Display the message locally
+    display_message(normalized_message);
     display_message("\n");
+    
+    if (expanded_hostname != NULL) {
+        free(expanded_hostname);
+    }
     
     return 0;
 }
@@ -752,21 +714,23 @@ ssize_t cmd_start_client(char **tokens) {
         return -1;
     }
     
-    // Get hostname
+    // Get hostname - handle variable expansion
     char *hostname = tokens[2];
+    char *expanded_hostname = NULL;
+    if (strchr(hostname, '$') != NULL) {
+        expanded_hostname = expand_variables(hostname);
+        if (expanded_hostname != NULL) {
+            hostname = expanded_hostname;
+        }
+    }
     
     // Create socket
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         display_error("ERROR: Failed to create socket", "");
-        return -1;
-    }
-    
-    // Get host information
-    struct hostent *host = gethostbyname(hostname);
-    if (host == NULL) {
-        display_error("ERROR: Failed to resolve hostname", "");
-        close(sockfd);
+        if (expanded_hostname != NULL) {
+            free(expanded_hostname);
+        }
         return -1;
     }
     
@@ -775,13 +739,34 @@ ssize_t cmd_start_client(char **tokens) {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+    
+    // Try as IP first
+    if (inet_pton(AF_INET, hostname, &server_addr.sin_addr) <= 0) {
+        // Not a valid IP, try hostname lookup
+        struct hostent *host = gethostbyname(hostname);
+        if (host == NULL) {
+            display_error("ERROR: Failed to resolve hostname", "");
+            close(sockfd);
+            if (expanded_hostname != NULL) {
+                free(expanded_hostname);
+            }
+            return -1;
+        }
+        memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+    }
     
     // Connect to server
     if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         display_error("ERROR: Failed to connect to server", "");
         close(sockfd);
+        if (expanded_hostname != NULL) {
+            free(expanded_hostname);
+        }
         return -1;
+    }
+    
+    if (expanded_hostname != NULL) {
+        free(expanded_hostname);
     }
     
     display_message("Connected to server. Type messages to send. Use CTRL+D to exit.\n");
@@ -795,100 +780,90 @@ ssize_t cmd_start_client(char **tokens) {
         return -1;
     } else if (pid == 0) {
         // Child process - handle receiving
-        client_receive(sockfd);
-        exit(EXIT_SUCCESS); // Should never reach here
+        char buffer[BUFFER_SIZE];
+        
+        // Set socket to non-blocking mode
+        int flags = fcntl(sockfd, F_GETFL, 0);
+        fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+        
+        while (1) {
+            // Use select to wait for data with timeout
+            fd_set read_fds;
+            FD_ZERO(&read_fds);
+            FD_SET(sockfd, &read_fds);
+            
+            struct timeval tv;
+            tv.tv_sec = 0;
+            tv.tv_usec = 100000; // 100ms
+            
+            int activity = select(sockfd + 1, &read_fds, NULL, NULL, &tv);
+            
+            if (activity > 0) {
+                ssize_t bytes_read = recv(sockfd, buffer, BUFFER_SIZE - 1, 0);
+                
+                if (bytes_read <= 0) {
+                    // Connection closed
+                    exit(EXIT_SUCCESS);
+                }
+                
+                // Null-terminate and display
+                buffer[bytes_read] = '\0';
+                display_message(buffer);
+            }
+        }
     } else {
         // Parent process - handle sending
         char input_buf[BUFFER_SIZE];
-        ssize_t bytes_read;
-        
-        // Set stdin to non-blocking
-        int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
-        
-        // Use select to wait for input without blocking indefinitely
-        fd_set read_fds;
-        struct timeval tv;
         
         while (1) {
-            FD_ZERO(&read_fds);
-            FD_SET(STDIN_FILENO, &read_fds);
+            // Display prompt for client input
+            display_message("mysh$ ");
             
-            // Set timeout (100ms)
-            tv.tv_sec = 0;
-            tv.tv_usec = 100000;
-            
-            int activity = select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &tv);
-            
-            if (activity < 0 && errno != EINTR) {
+            // Read user input
+            if (fgets(input_buf, BUFFER_SIZE, stdin) == NULL) {
+                // EOF or error
                 break;
-            } else if (activity > 0 && FD_ISSET(STDIN_FILENO, &read_fds)) {
-                bytes_read = read(STDIN_FILENO, input_buf, BUFFER_SIZE - 1);
+            }
+            
+            // Remove trailing newline
+            size_t len = strlen(input_buf);
+            if (len > 0 && input_buf[len-1] == '\n') {
+                input_buf[len-1] = '\0';
+                len--;
+            }
+            
+            // Check for special commands
+            if (strcmp(input_buf, "\\connected") == 0) {
+                // Send special command
+                send(sockfd, "\\connected\n", 11, 0);
+            } else {
+                // Normalize spaces
+                char normalized[BUFFER_SIZE];
+                int j = 0, in_space = 0;
                 
-                if (bytes_read <= 0) {
-                    // EOF or error
-                    break;
-                }
-                
-                // Null-terminate the input
-                input_buf[bytes_read] = '\0';
-                
-                // Remove trailing newline if present
-                if (input_buf[bytes_read - 1] == '\n') {
-                    input_buf[bytes_read - 1] = '\0';
-                    bytes_read--;
-                }
-                
-                // Check for EOF (empty message)
-                if (bytes_read == 0) {
-                    break;
-                }
-                
-                // Handle special commands
-                if (strncmp(input_buf, "\\connected", 10) == 0) {
-                    // Special command to show connected clients
-                    send(sockfd, "\\connected\n", 11, 0);
-                } else {
-                    // Normalize the message (remove extra spaces)
-                    char normalized_message[BUFFER_SIZE];
-                    int j = 0;
-                    int in_space = 0;
-                    
-                    for (int i = 0; input_buf[i] != '\0'; i++) {
-                        if (input_buf[i] == ' ' || input_buf[i] == '\t') {
-                            if (!in_space) {
-                                normalized_message[j++] = ' ';
-                                in_space = 1;
-                            }
-                        } else {
-                            normalized_message[j++] = input_buf[i];
-                            in_space = 0;
+                for (size_t i = 0; input_buf[i] != '\0'; i++) {
+                    if (input_buf[i] == ' ' || input_buf[i] == '\t') {
+                        if (!in_space && j > 0) {
+                            normalized[j++] = ' ';
+                            in_space = 1;
                         }
-                    }
-                    normalized_message[j] = '\0';
-                    
-                    // Add newline if not present
-                    if (j > 0 && normalized_message[j-1] != '\n') {
-                        normalized_message[j] = '\n';
-                        normalized_message[j+1] = '\0';
-                    }
-                    
-                    // Send the message
-                    if (send(sockfd, normalized_message, strlen(normalized_message), 0) < 0) {
-                        display_error("ERROR: Failed to send message", "");
-                        break;
+                    } else {
+                        normalized[j++] = input_buf[i];
+                        in_space = 0;
                     }
                 }
+                normalized[j] = '\0';
+                
+                // Send the message
+                send(sockfd, normalized, strlen(normalized), 0);
+                send(sockfd, "\n", 1, 0);
             }
         }
         
         // Clean up
-        kill(pid, SIGTERM); // Terminate receiver process
+        kill(pid, SIGTERM);
         waitpid(pid, NULL, 0);
         close(sockfd);
-        
-        // Reset stdin to blocking mode
-        fcntl(STDIN_FILENO, F_SETFL, flags);
         
         display_message("Client disconnected\n");
     }
