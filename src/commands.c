@@ -252,15 +252,15 @@ void mark_process_completed(pid_t pid)
     if (process != NULL)
     {
         char buffer[MAX_STR_LEN];
-        // Format must match test expectations EXACTLY: [job_id]+ Done command
-        snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s", process->job_id, process->command);
+        // Format must match test expectations EXACTLY: [job_id]+  Done command
+        // Note the TWO spaces between + and Done
+        snprintf(buffer, MAX_STR_LEN, "[%d]+  Done %s", process->job_id, process->command);
         add_bg_message(buffer);
 
         // Remove process from the list
         remove_bg_process(pid);
     }
 }
-
 // Handle the kill command
 ssize_t cmd_kill(char **tokens)
 {

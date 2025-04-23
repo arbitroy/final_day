@@ -46,23 +46,9 @@ void sigchld_handler(int signum __attribute__((unused)))
     // Non-blocking wait to collect all terminated children
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
     {
-        bg_process_t *process = find_bg_process_by_pid(pid);
-        if (process != NULL)
-        {
-            // Form the completion message
-            char buffer[MAX_STR_LEN];
-            snprintf(buffer, MAX_STR_LEN, "[%d]+ Done %s",
-                     process->job_id, process->command);
-
-            // Add message to queue
-            add_bg_message(buffer);
-
-            // Remove process from the list
-            remove_bg_process(pid);
-        }
+        mark_process_completed(pid);
     }
 }
-
 // Signal handler for SIGINT (Ctrl+C)
 void sigint_handler(int signum __attribute__((unused)))
 {
