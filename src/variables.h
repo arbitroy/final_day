@@ -34,4 +34,10 @@ void set_variable_list(variable_t *new_list);
 void free_variables(void);
 char* expand_variables(const char *str);
 
+/*
+ * Free a specific variable list.
+ * This is useful for freeing duplicated variable lists.
+ */
+void free_variable_list(variable_t *var_list_to_free);
+
 #endif

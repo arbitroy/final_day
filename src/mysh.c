@@ -409,8 +409,7 @@ int main(__attribute__((unused)) int argc,
         {
             mysh_debug_log("Pipeline contains variable assignment, special handling");
 
-            // For pipelines with variable assignments, we need to execute
-            // as a separate pipeline to prevent variable leakage
+            // Create pipes for output redirection
             int pipe_fd[2];
             if (pipe(pipe_fd) == -1)
             {
@@ -428,43 +427,69 @@ int main(__attribute__((unused)) int argc,
             }
             else if (pid == 0)
             {
-                // Child process - execute the pipeline
-                close(pipe_fd[0]); // Close read end
+                // Child process
+                mysh_debug_log("[Child] Executing pipeline with variable assignments");
 
-                // Duplicate the variable environment for this process
+                // Close read end of pipe
+                close(pipe_fd[0]);
+
+                // Redirect stdout to write end of pipe
+                if (dup2(pipe_fd[1], STDOUT_FILENO) == -1)
+                {
+                    perror("dup2 stdout");
+                    exit(EXIT_FAILURE);
+                }
+                close(pipe_fd[1]);
+
+                // Make a fresh copy of the parent's variable environment
                 variable_t *child_vars = duplicate_variables();
                 if (child_vars != NULL)
                 {
                     set_variable_list(child_vars);
+                    mysh_debug_log("[Child] Set up isolated variable environment");
+                }
+
+                // Process any variable assignments in the pipeline
+                for (int i = 0; token_arr[i] != NULL; i++)
+                {
+                    if (strcmp(token_arr[i], "|") != 0 && is_variable_assignment(token_arr[i]))
+                    {
+                        mysh_debug_log("[Child] Processing variable assignment: %s", token_arr[i]);
+                        handle_variable_assignment(token_arr[i]);
+                    }
                 }
 
                 // Execute the pipeline
                 int result = handle_pipeline(token_arr);
+                mysh_debug_log("[Child] Pipeline execution completed with result: %d", result);
 
-                // Clean up and exit
-                close(pipe_fd[1]);
+                // Exit after pipeline execution
                 exit(result == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
             }
             else
             {
                 // Parent process
-                close(pipe_fd[1]); // Close write end
+                mysh_debug_log("[Parent] Waiting for child pipeline process: %d", pid);
 
-                // Wait for child process to complete
-                int status;
-                waitpid(pid, &status, 0);
+                // Close write end of pipe
+                close(pipe_fd[1]);
 
-                // Check for any output
+                // Read and display output from child
                 char buffer[MAX_STR_LEN];
                 ssize_t bytes_read;
-
-                if ((bytes_read = read(pipe_fd[0], buffer, MAX_STR_LEN - 1)) > 0)
+                while ((bytes_read = read(pipe_fd[0], buffer, MAX_STR_LEN - 1)) > 0)
                 {
                     buffer[bytes_read] = '\0';
                     display_message(buffer);
                 }
 
                 close(pipe_fd[0]);
+
+                // Wait for child process to complete
+                int status;
+                waitpid(pid, &status, 0);
+                mysh_debug_log("[Parent] Child pipeline process completed: status=%d", status);
+
                 continue;
             }
         }
@@ -556,15 +581,63 @@ int main(__attribute__((unused)) int argc,
         if (builtin_fn != NULL)
         {
             mysh_debug_log("Executing builtin command: %s", token_arr[0]);
-            // Execute builtin directly
-            ssize_t err = builtin_fn(token_arr);
-            if (err == -1)
+
+            // Check for background execution
+            int in_background = 0;
+            int last_token = 0;
+
+            while (token_arr[last_token + 1] != NULL)
             {
-                display_error("ERROR: Builtin failed: ", token_arr[0]);
+                last_token++;
+            }
+
+            // Check if the last token is &
+            if (token_arr[last_token] != NULL && strcmp(token_arr[last_token], "&") == 0)
+            {
+                mysh_debug_log("Background builtin command detected");
+                in_background = 1;
+                token_arr[last_token] = NULL; // Remove the & token
+            }
+
+            if (in_background)
+            {
+                // Execute builtin in background
+                pid_t pid = fork();
+                if (pid == -1)
+                {
+                    display_error("ERROR: Failed to fork", "");
+                }
+                else if (pid == 0)
+                {
+                    // Child process - execute the builtin
+                    exit(builtin_fn(token_arr) == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
+                }
+                else
+                {
+                    // Parent process - add to background jobs
+                    char command_str[MAX_STR_LEN] = "";
+                    for (int i = 0; token_arr[i] != NULL; i++)
+                    {
+                        if (i > 0)
+                        {
+                            strcat(command_str, " ");
+                        }
+                        strcat(command_str, token_arr[i]);
+                    }
+                    add_bg_process(pid, command_str);
+                }
+            }
+            else
+            {
+                // Execute builtin normally
+                ssize_t err = builtin_fn(token_arr);
+                if (err == -1)
+                {
+                    display_error("ERROR: Builtin failed: ", token_arr[0]);
+                }
             }
             continue;
         }
-
         // Check if command exists before attempting to run it
         if (!check_command_exists(token_arr[0]))
         {

@@ -276,3 +276,23 @@ void free_variables(void) {
     var_list = NULL;
 }
 
+/*
+ * Free a specific variable list.
+ * This is useful for freeing duplicated variable lists.
+ */
+void free_variable_list(variable_t *var_list_to_free) {
+    if (var_list_to_free == NULL) {
+        return;
+    }
+    
+    variable_t *current = var_list_to_free;
+    variable_t *next;
+    
+    while (current != NULL) {
+        next = current->next;
+        free(current->key);
+        free(current->value);
+        free(current);
+        current = next;
+    }
+}

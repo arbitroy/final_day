@@ -281,20 +281,25 @@ ssize_t cmd_kill(char **tokens)
     }
 
     // Send the signal
-    if (kill(pid, signum) != 0) {
-        if (errno == ESRCH) {
+    if (kill(pid, signum) != 0)
+    {
+        if (errno == ESRCH)
+        {
             display_error("ERROR: The process does not exist", "");
-        } else {
+        }
+        else
+        {
             display_error("ERROR: Invalid signal specified", "");
         }
         return -1;
     }
-    
+
     // For termination signals, wait briefly to allow process to exit
-    if (signum == SIGTERM || signum == SIGKILL) {
+    if (signum == SIGTERM || signum == SIGKILL)
+    {
         usleep(10000); // Wait 10ms for the process to terminate
     }
-    
+
     return 0;
 }
 
@@ -451,7 +456,8 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
                 }
                 // Process any immediate completion messages
                 char *immediate_msg;
-                while ((immediate_msg = get_next_bg_message()) != NULL) {
+                while ((immediate_msg = get_next_bg_message()) != NULL)
+                {
                     display_message(immediate_msg);
                     display_message("\n");
                     free(immediate_msg);
@@ -503,6 +509,7 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
         else if (pid == 0)
         {
             // Child process
+            debug_log("Child process for command: %s", tokens[0]);
 
             // Redirect input if needed
             if (input_fd != STDIN_FILENO)
@@ -513,6 +520,14 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
                     exit(EXIT_FAILURE);
                 }
                 safe_close(input_fd);
+            }
+
+            // Keep a copy of stderr for error messages
+            int stderr_copy = dup(STDERR_FILENO);
+            if (stderr_copy == -1)
+            {
+                perror("dup stderr");
+                exit(EXIT_FAILURE);
             }
 
             // Redirect output if needed
@@ -529,30 +544,29 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
             // Execute the command
             if (command_exists(tokens[0]))
             {
+                debug_log("Executing system command: %s", tokens[0]);
                 execvp(tokens[0], tokens);
                 // If execvp returns, there was an error
-                perror("execvp");
-                exit(EXIT_FAILURE); // Make sure we exit immediately on error
+                // Use the stderr copy to ensure error message is visible
+                dup2(stderr_copy, STDERR_FILENO);
+                display_error("ERROR: Command failed: ", tokens[0]);
+                close(stderr_copy);
+                exit(EXIT_FAILURE);
             }
             else
             {
-                // IMPORTANT CHANGE: Ensure error message goes to stderr
-                int stderr_copy = dup(STDERR_FILENO);
-                if (stderr_copy != -1)
-                {
-                    display_error("ERROR: Unknown command: ", tokens[0]);
-                    dup2(stderr_copy, STDERR_FILENO);
-                    close(stderr_copy);
-                }
+                // Use stderr copy for error message
+                dup2(stderr_copy, STDERR_FILENO);
+                display_error("ERROR: Unknown command: ", tokens[0]);
+                close(stderr_copy);
                 exit(EXIT_FAILURE);
             }
-
-            // If we get here, exec failed
-            exit(EXIT_FAILURE);
         }
         else
         {
             // Parent process
+            debug_log("Parent process after fork, child pid: %d", pid);
+
             // Close pipe ends in parent if we're using pipes
             if (input_fd != STDIN_FILENO)
             {
@@ -568,7 +582,7 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
                 // Background process, don't wait
                 char command_str[MAX_STR_LEN] = "";
 
-                // Reconstruct the command
+                // Reconstruct the command string without the &
                 for (int i = 0; tokens[i] != NULL; i++)
                 {
                     if (i > 0)
@@ -578,8 +592,13 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
                     strcat(command_str, tokens[i]);
                 }
 
-                // Add to background process list
-                add_bg_process(pid, command_str);
+                // Ensure we're adding to the background process list correctly
+                debug_log("Adding background process: pid=%d, command=%s", pid, command_str);
+                int job_id = add_bg_process(pid, command_str);
+                if (job_id == -1)
+                {
+                    display_error("ERROR: Failed to add background process", "");
+                }
 
                 return 0;
             }
@@ -587,7 +606,9 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
             {
                 // Foreground process, wait for completion
                 int status;
+                debug_log("Waiting for foreground process: pid=%d", pid);
                 waitpid(pid, &status, 0);
+                debug_log("Foreground process completed: pid=%d, status=%d", pid, status);
 
                 // KEY CHANGE: Always return 0 in a pipe chain, even if a command fails
                 // This ensures the pipeline doesn't block waiting for the next command
@@ -627,13 +648,13 @@ int handle_pipeline(char **tokens)
             last_token++;
         }
 
-        if (strcmp(tokens[last_token], "&") == 0)
+        if (tokens[last_token] != NULL && strcmp(tokens[last_token], "&") == 0)
         {
             in_background = 1;
-            tokens[last_token] = NULL;
+            tokens[last_token] = NULL; // Remove the & token
+            debug_log("Executing single command in background: %s", tokens[0]);
         }
 
-        debug_log("Executing single command: %s (background: %d)", tokens[0], in_background);
         return execute_command(tokens, STDIN_FILENO, STDOUT_FILENO, in_background);
     }
 
@@ -682,10 +703,11 @@ int handle_pipeline(char **tokens)
         last_token++;
     }
 
-    if (cmds[last_cmd][last_token] != NULL && strcmp(cmds[last_cmd][last_token], "&") == 0)
+    if (cmds[last_cmd][last_token] != NULL &&
+        strcmp(cmds[last_cmd][last_token], "&") == 0)
     {
         in_background = 1;
-        cmds[last_cmd][last_token] = NULL;
+        cmds[last_cmd][last_token] = NULL; // Remove the & token
         debug_log("Pipeline will run in background");
     }
 
@@ -820,28 +842,32 @@ int handle_pipeline(char **tokens)
         {
             int cmd_status;
             debug_log("[Parent] Waiting for command %d (pid %d)", i, pids[i]);
-            
+
             // Add a timeout for the waitpid call
             int wait_status = waitpid(pids[i], &cmd_status, WNOHANG);
-            if (wait_status == 0) {
+            if (wait_status == 0)
+            {
                 // Process hasn't finished yet, wait with a timeout
                 int waited_ms = 0;
                 const int max_wait_ms = 500; // 500ms max wait
-                
-                while (waitpid(pids[i], &cmd_status, WNOHANG) == 0 && waited_ms < max_wait_ms) {
+
+                while (waitpid(pids[i], &cmd_status, WNOHANG) == 0 && waited_ms < max_wait_ms)
+                {
                     usleep(10000); // 10ms wait
                     waited_ms += 10;
                 }
-                
-                if (waited_ms >= max_wait_ms) {
+
+                if (waited_ms >= max_wait_ms)
+                {
                     // Process is taking too long, kill it
                     kill(pids[i], SIGTERM);
                     waitpid(pids[i], &cmd_status, 0);
                 }
             }
-            
+
             // Process the exit status
-            if (WIFEXITED(cmd_status)) {
+            if (WIFEXITED(cmd_status))
+            {
                 status = WEXITSTATUS(cmd_status);
             }
         }
@@ -873,6 +899,12 @@ int handle_pipeline(char **tokens)
 
         add_bg_process(pids[cmd_count - 1], command_str);
         debug_log("[Parent] Background process added: %s", command_str);
+    }
+    // Clean up - Free the duplicated variable list to prevent memory leaks
+    if (parent_vars != NULL)
+    {
+        debug_log("Freeing duplicated variable environment");
+        free_variable_list(parent_vars);
     }
 
     debug_log("[Parent] Pipeline execution complete with status %d", status);
