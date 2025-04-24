@@ -40,4 +40,10 @@ char* expand_variables(const char *str);
  */
 void free_variable_list(variable_t *var_list_to_free);
 
+// Function to check if a string is a variable assignment
+int is_variable_assignment(const char *str);
+
+// Function to handle variable assignment
+int handle_variable_assignment(const char *str);
+
 #endif

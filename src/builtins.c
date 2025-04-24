@@ -286,6 +286,7 @@ ssize_t bn_cat(char **tokens) {
     FILE *file = fopen(tokens[1], "r");
     if (file == NULL) {
         display_error("ERROR: Cannot open file", "");
+        display_error("ERROR: Builtin failed: cat", "");
         return -1;
     }
 

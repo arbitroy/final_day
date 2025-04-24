@@ -356,14 +356,10 @@ int main(__attribute__((unused)) int argc,
             break;
         }
 
-        mysh_debug_log("Input received: '%s'", input_buf);
-
         // Check if input contains a pipe before tokenizing
         int raw_has_pipe = strchr(input_buf, '|') != NULL;
         mysh_debug_log("Raw input contains pipe: %s", raw_has_pipe ? "YES" : "NO");
-
         size_t token_count = tokenize_input(input_buf, token_arr);
-        mysh_debug_log("Tokenized into %zu tokens", token_count);
 
         // Check for empty input or exit command
         if (token_count == 0)
@@ -378,7 +374,7 @@ int main(__attribute__((unused)) int argc,
             break; // Exit command, break the loop
         }
 
-        // Check tokens for pipe character
+        // Check tokens for pipe character - DO THIS FIRST
         int has_pipe = 0;
         for (size_t i = 0; i < token_count; i++)
         {
@@ -393,108 +389,7 @@ int main(__attribute__((unused)) int argc,
         // Expand variables in the tokens
         expand_variables_in_tokens(token_arr);
 
-        // Check for variable assignment
-        if (is_variable_assignment(token_arr[0]))
-        {
-            mysh_debug_log("Variable assignment detected: %s", token_arr[0]);
-            if (handle_variable_assignment(token_arr[0]) == -1)
-            {
-                display_error("ERROR: Failed to set variable: ", token_arr[0]);
-            }
-            continue; // Make sure we're properly continuing
-        }
-
-        // Special handling for pipes with variable assignments
-        if (has_pipe && pipeline_has_variable_assignment(token_arr))
-        {
-            mysh_debug_log("Pipeline contains variable assignment, special handling");
-
-            // Create pipes for output redirection
-            int pipe_fd[2];
-            if (pipe(pipe_fd) == -1)
-            {
-                display_error("ERROR: Failed to create pipe", "");
-                continue;
-            }
-
-            pid_t pid = fork();
-            if (pid == -1)
-            {
-                display_error("ERROR: Failed to fork", "");
-                close(pipe_fd[0]);
-                close(pipe_fd[1]);
-                continue;
-            }
-            else if (pid == 0)
-            {
-                // Child process
-                mysh_debug_log("[Child] Executing pipeline with variable assignments");
-
-                // Close read end of pipe
-                close(pipe_fd[0]);
-
-                // Redirect stdout to write end of pipe
-                if (dup2(pipe_fd[1], STDOUT_FILENO) == -1)
-                {
-                    perror("dup2 stdout");
-                    exit(EXIT_FAILURE);
-                }
-                close(pipe_fd[1]);
-
-                // Make a fresh copy of the parent's variable environment
-                variable_t *child_vars = duplicate_variables();
-                if (child_vars != NULL)
-                {
-                    set_variable_list(child_vars);
-                    mysh_debug_log("[Child] Set up isolated variable environment");
-                }
-
-                // Process any variable assignments in the pipeline
-                for (int i = 0; token_arr[i] != NULL; i++)
-                {
-                    if (strcmp(token_arr[i], "|") != 0 && is_variable_assignment(token_arr[i]))
-                    {
-                        mysh_debug_log("[Child] Processing variable assignment: %s", token_arr[i]);
-                        handle_variable_assignment(token_arr[i]);
-                    }
-                }
-
-                // Execute the pipeline
-                int result = handle_pipeline(token_arr);
-                mysh_debug_log("[Child] Pipeline execution completed with result: %d", result);
-
-                // Exit after pipeline execution
-                exit(result == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
-            }
-            else
-            {
-                // Parent process
-                mysh_debug_log("[Parent] Waiting for child pipeline process: %d", pid);
-
-                // Close write end of pipe
-                close(pipe_fd[1]);
-
-                // Read and display output from child
-                char buffer[MAX_STR_LEN];
-                ssize_t bytes_read;
-                while ((bytes_read = read(pipe_fd[0], buffer, MAX_STR_LEN - 1)) > 0)
-                {
-                    buffer[bytes_read] = '\0';
-                    display_message(buffer);
-                }
-
-                close(pipe_fd[0]);
-
-                // Wait for child process to complete
-                int status;
-                waitpid(pid, &status, 0);
-                mysh_debug_log("[Parent] Child pipeline process completed: status=%d", status);
-
-                continue;
-            }
-        }
-
-        // If we have a pipe, use the pipeline handler
+        // FIRST, check for pipes (regardless of whether they contain variable assignments)
         if (has_pipe)
         {
             mysh_debug_log("Detected pipeline, calling handle_pipeline");
@@ -508,6 +403,17 @@ int main(__attribute__((unused)) int argc,
                 }
             }
             continue;
+        }
+
+        // THEN check for variable assignment (when no pipes are present)
+        if (is_variable_assignment(token_arr[0]))
+        {
+            mysh_debug_log("Variable assignment detected: %s", token_arr[0]);
+            if (handle_variable_assignment(token_arr[0]) == -1)
+            {
+                display_error("ERROR: Failed to set variable: ", token_arr[0]);
+            }
+            continue; // Make sure we're properly continuing
         }
 
         // Handle network commands

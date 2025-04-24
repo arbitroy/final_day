@@ -685,7 +685,13 @@ int handle_pipeline(char **tokens)
 
         debug_log("Verifying command %d: %s", i, cmds[i][0]);
 
-        // Check command existence first
+        // Check if it's a variable assignment first - this is a valid command
+        if (is_variable_assignment(cmds[i][0]))
+        {
+            continue; // Skip further validation, variable assignments are valid
+        }
+
+        // Only check builtin/system command if not a variable assignment
         if (check_builtin(cmds[i][0]) == NULL && !command_exists(cmds[i][0]))
         {
             display_error("ERROR: Unknown command: ", cmds[i][0]);
@@ -764,14 +770,20 @@ int handle_pipeline(char **tokens)
             // Child process
             debug_log("[Child %d] Setting up redirections for command: %s", getpid(), cmds[i][0]);
 
-            // FIX: Set up variables for the child process
-            if (parent_vars != NULL)
+            // Create a fresh copy of parent's variables for EACH child
+            variable_t *child_vars = duplicate_variables();
+            if (child_vars != NULL)
             {
-                // Give each child a copy of the parent's variables
-                variable_t *child_vars = duplicate_variables();
-                if (child_vars != NULL)
+                set_variable_list(child_vars);
+
+                // Process any variable assignments only in this isolated child environment
+                for (int j = 0; cmds[i][j] != NULL; j++)
                 {
-                    set_variable_list(child_vars);
+                    if (is_variable_assignment(cmds[i][j]))
+                    {
+                        debug_log("[Child %d] Processing local variable: %s", getpid(), cmds[i][j]);
+                        handle_variable_assignment(cmds[i][j]);
+                    }
                 }
             }
 
@@ -808,7 +820,15 @@ int handle_pipeline(char **tokens)
                 safe_close(pipes[j][1]);
             }
 
-            // Execute command
+            // Check if this command is ONLY a variable assignment
+            if (is_variable_assignment(cmds[i][0]))
+            {
+                // Just exit successfully without trying to execute
+                debug_log("[Child %d] Command is variable assignment, exiting successfully", getpid());
+                exit(EXIT_SUCCESS);
+            }
+
+            // Execute command as before
             bn_ptr builtin_fn = check_builtin(cmds[i][0]);
             if (builtin_fn != NULL)
             {
@@ -823,7 +843,6 @@ int handle_pipeline(char **tokens)
                 exit(EXIT_FAILURE);
             }
         }
-        // Parent continues...
     }
 
     // Parent process
@@ -837,38 +856,32 @@ int handle_pipeline(char **tokens)
     // Wait for completion unless background
     if (!in_background)
     {
-        debug_log("[Parent] Waiting for all child processes to complete");
         for (int i = 0; i < cmd_count; i++)
         {
             int cmd_status;
-            debug_log("[Parent] Waiting for command %d (pid %d)", i, pids[i]);
+            int wait_result;
+            int waited_ms = 0;
+            const int max_wait_ms = 500; // 500ms timeout
 
-            // Add a timeout for the waitpid call
-            int wait_status = waitpid(pids[i], &cmd_status, WNOHANG);
-            if (wait_status == 0)
+            debug_log("[Parent] Waiting for command %d (pid %d) with timeout", i, pids[i]);
+
+            // Try non-blocking wait first
+            wait_result = waitpid(pids[i], &cmd_status, WNOHANG);
+
+            // If child isn't done yet, wait with timeout
+            while (wait_result == 0 && waited_ms < max_wait_ms)
             {
-                // Process hasn't finished yet, wait with a timeout
-                int waited_ms = 0;
-                const int max_wait_ms = 500; // 500ms max wait
-
-                while (waitpid(pids[i], &cmd_status, WNOHANG) == 0 && waited_ms < max_wait_ms)
-                {
-                    usleep(10000); // 10ms wait
-                    waited_ms += 10;
-                }
-
-                if (waited_ms >= max_wait_ms)
-                {
-                    // Process is taking too long, kill it
-                    kill(pids[i], SIGTERM);
-                    waitpid(pids[i], &cmd_status, 0);
-                }
+                usleep(10000); // 10ms
+                waited_ms += 10;
+                wait_result = waitpid(pids[i], &cmd_status, WNOHANG);
             }
 
-            // Process the exit status
-            if (WIFEXITED(cmd_status))
+            // If we timed out, force terminate the child
+            if (wait_result == 0)
             {
-                status = WEXITSTATUS(cmd_status);
+                debug_log("[Parent] Child %d timed out, sending SIGTERM", pids[i]);
+                kill(pids[i], SIGTERM);
+                waitpid(pids[i], &cmd_status, 0);
             }
         }
     }

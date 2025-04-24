@@ -1,212 +1,212 @@
-24-April-2025 11:22:05---Student: ..
-24-April-2025 11:22:05----Code compiles:PASS
+24-April-2025 15:17:38---Student: ..
+24-April-2025 15:17:38----Code compiles:PASS
 Launch Suite:
-  24-April-2025 11:22:07----exit causes process to terminate with correct return code:OK
-  24-April-2025 11:22:11----Shell message is displayed, uses exit to test:OK
+  24-April-2025 15:17:40----exit causes process to terminate with correct return code:OK
+  24-April-2025 15:17:44----Shell message is displayed, uses exit to test:OK
 Result:PASS
 Unknown Command Message:
-  24-April-2025 11:22:15----Unknown command should display corresponding message:OK
-  24-April-2025 11:22:19----Multiple unknown commands:OK
+  24-April-2025 15:17:48----Unknown command should display corresponding message:OK
+  24-April-2025 15:17:52----Multiple unknown commands:OK
 Result:PASS
 Long Command Message:
-  24-April-2025 11:22:23----A not-too-long and legal command input is valid:OK
-  24-April-2025 11:22:27----Long command input is invalid:OK
-  24-April-2025 11:22:31----Long command message takes priority:OK
+  24-April-2025 15:17:56----A not-too-long and legal command input is valid:OK
+  24-April-2025 15:18:00----Long command input is invalid:OK
+  24-April-2025 15:18:04----Long command message takes priority:OK
 Result:PASS
 Echo Simple Messages:
-  24-April-2025 11:22:35----Echo of one character displays correctly:OK
-  24-April-2025 11:22:39----Echo of simple message displays correctly:OK
-  24-April-2025 11:22:43----Echo of simple message displays correctly v3:OK
-  24-April-2025 11:22:47----Echo of simple message displays correctly v3:NOT OK
-  24-April-2025 11:22:51----Echo of simple message does not show errors:OK
+  24-April-2025 15:18:08----Echo of one character displays correctly:OK
+  24-April-2025 15:18:12----Echo of simple message displays correctly:OK
+  24-April-2025 15:18:16----Echo of simple message displays correctly v3:OK
+  24-April-2025 15:18:20----Echo of simple message displays correctly v3:NOT OK
+  24-April-2025 15:18:25----Echo of simple message does not show errors:OK
 Result:FAIL
 Echo Special Characters:
-  24-April-2025 11:22:56----Echo of mixed message displays correctly:OK
-  24-April-2025 11:23:00----echo with quotes has no special meaning:OK
-  24-April-2025 11:23:04----echo ignores extra spaces:OK
+  24-April-2025 15:18:29----Echo of mixed message displays correctly:OK
+  24-April-2025 15:18:33----echo with quotes has no special meaning:OK
+  24-April-2025 15:18:37----echo ignores extra spaces:OK
 Result:PASS
 Multiple Commands:
-  24-April-2025 11:23:08----Two echo commands display correctly:OK
-  24-April-2025 11:23:12----Two echo commands do not show error:OK
-  24-April-2025 11:23:16----Echo commands work while other commands error:OK
+  24-April-2025 15:18:41----Two echo commands display correctly:OK
+  24-April-2025 15:18:45----Two echo commands do not show error:OK
+  24-April-2025 15:18:49----Echo commands work while other commands error:OK
 Result:PASS
 Simple variables accesses:
-  24-April-2025 11:23:20----Declare and access a single variable:OK
-  24-April-2025 11:23:22----Declare and access a single variable:OK
-  24-April-2025 11:23:24----Tests for correct evaluation of variable expansions containing only intitialized variables:OK
-  24-April-2025 11:23:26----Tests for correct evaluation of variable expansions containing variables plus plaintext and uninitialized variables:OK
+  24-April-2025 15:18:53----Declare and access a single variable:OK
+  24-April-2025 15:18:55----Declare and access a single variable:OK
+  24-April-2025 15:18:57----Tests for correct evaluation of variable expansions containing only intitialized variables:OK
+  24-April-2025 15:18:59----Tests for correct evaluation of variable expansions containing variables plus plaintext and uninitialized variables:OK
 Result:PASS
 Variable integration with other commands:
-  24-April-2025 11:23:28----Declare a single variable:OK
-  24-April-2025 11:23:30----Declare and access two variables:OK
+  24-April-2025 15:19:01----Declare a single variable:OK
+  24-April-2025 15:19:03----Declare and access two variables:OK
 Result:PASS
 Custom variable accesses:
-  24-April-2025 11:23:32----Access variables in separate lines:OK
-  24-April-2025 11:23:34----Access variables in separate lines v2:OK
+  24-April-2025 15:19:05----Access variables in separate lines:OK
+  24-April-2025 15:19:07----Access variables in separate lines v2:OK
 Result:PASS
 Echo without variables displays plain text:
-  24-April-2025 11:23:36----Variables access with $ is bound to name:OK
-  24-April-2025 11:23:38----Non-existing variable displays as an empty string:OK
+  24-April-2025 15:19:09----Variables access with $ is bound to name:OK
+  24-April-2025 15:19:11----Non-existing variable displays as an empty string:OK
 Result:PASS
 Variable values can be redefined:
-  24-April-2025 11:23:40----Variable value is redefined appropriately:NOT OK (TIMEOUT)
-  24-April-2025 11:23:42----Variable value is redefined appropriately v2:OK
-Result:FAIL
+  24-April-2025 15:19:13----Variable value is redefined appropriately:OK
+  24-April-2025 15:19:15----Variable value is redefined appropriately v2:OK
+Result:PASS
 Variable formatting edge cases:
-  24-April-2025 11:23:44----Variables accesses separate by the first equal:OK
-  24-April-2025 11:23:46----Variable declaration with spaces is not supported:OK
+  24-April-2025 15:19:17----Variables accesses separate by the first equal:OK
+  24-April-2025 15:19:19----Variable declaration with spaces is not supported:OK
 Result:PASS
 Advanced tests:
-  24-April-2025 11:23:48----Declare and access 100 variables:NOT OK (TIMEOUT)
-Result:FAIL
+  24-April-2025 15:19:21----Declare and access 100 variables:OK
+Result:PASS
 correct cat argument setup:
-  24-April-2025 11:23:58----Cat on a file that contains one word:OK
+  24-April-2025 15:19:31----Cat on a file that contains one word:OK
 Result:PASS
 cat correctly reads sample files:
-  24-April-2025 11:24:02----Cat on a file that contains multiple words:OK
-  24-April-2025 11:24:06----Cat on a file that contains multiple lines:OK
+  24-April-2025 15:19:35----Cat on a file that contains multiple words:OK
+  24-April-2025 15:19:39----Cat on a file that contains multiple lines:OK
 Result:PASS
 correct wc argument setup:
-  24-April-2025 11:24:10----wc on an empty file:OK
+  24-April-2025 15:19:43----wc on an empty file:OK
 Result:PASS
 wc reports correct counts on sample files:
-  24-April-2025 11:24:14----wc on a file that contains mutliple lines:OK
-  24-April-2025 11:24:18----wc on a file that contains mutliple words in a line:OK
-  24-April-2025 11:24:22----wc on a file that contains blank lines:OK
+  24-April-2025 15:19:47----wc on a file that contains mutliple lines:OK
+  24-April-2025 15:19:51----wc on a file that contains mutliple words in a line:OK
+  24-April-2025 15:19:55----wc on a file that contains blank lines:OK
 Result:PASS
 Sample ls runs:
-  24-April-2025 11:24:26----Create a single sub-directory with a single file:OK
-  24-April-2025 11:24:30----Create a single sub-directory with multiple files:OK
-  24-April-2025 11:24:36----ls a directory:OK
+  24-April-2025 15:19:59----Create a single sub-directory with a single file:OK
+  24-April-2025 15:20:03----Create a single sub-directory with multiple files:OK
+  24-April-2025 15:20:09----ls a directory:OK
 Result:PASS
 Sample cd runs:
-  24-April-2025 11:24:43----cd into a directory and display the files:OK
-  24-April-2025 11:24:49----cd into a nested directory and display the files:OK
+  24-April-2025 15:20:15----cd into a directory and display the files:OK
+  24-April-2025 15:20:21----cd into a nested directory and display the files:OK
 Result:PASS
 ls error handling:
-  24-April-2025 11:24:55----ls on an invalid path reports an error:OK
+  24-April-2025 15:20:27----ls on an invalid path reports an error:OK
 Result:PASS
 ls handles edge cases correctly:
-  24-April-2025 11:24:59----ls a single file through a variable identifier:OK
-  24-April-2025 11:25:03----Create a single sub-directory, and ls into that directory:OK
+  24-April-2025 15:20:31----ls a single file through a variable identifier:OK
+  24-April-2025 15:20:35----Create a single sub-directory, and ls into that directory:OK
 Result:PASS
 ls filters files correctly:
-  24-April-2025 11:25:07----ls correctly filters files:OK
-  24-April-2025 11:25:11----ls correctly filters files v2:OK
+  24-April-2025 15:20:39----ls correctly filters files:OK
+  24-April-2025 15:20:43----ls correctly filters files v2:OK
 Result:PASS
 Recursive ls displays files correctly:
-  24-April-2025 11:25:15----Recursive ls with depth 1 does not capture inner files:OK
-  24-April-2025 11:25:21----Recursive ls with depth 2 captures inner files:OK
-  24-April-2025 11:25:27----Recursive ls supports --d argument before --rec:OK
+  24-April-2025 15:20:48----Recursive ls with depth 1 does not capture inner files:OK
+  24-April-2025 15:20:54----Recursive ls with depth 2 captures inner files:OK
+  24-April-2025 15:21:00----Recursive ls supports --d argument before --rec:OK
 Result:PASS
 Advanced Tests:
-  24-April-2025 11:25:33----Recursive ls correctly searches files in sub-directories:OK
+  24-April-2025 15:21:06----Recursive ls correctly searches files in sub-directories:OK
 Result:PASS
 Sample echo pipes:
-  24-April-2025 11:25:39----Piping echo to echo works the same as normal echo:OK
-  24-April-2025 11:25:43----Piping echo to echo works the same as normal echo:OK
+  24-April-2025 15:21:12----Piping echo to echo works the same as normal echo:OK
+  24-April-2025 15:21:16----Piping echo to echo works the same as normal echo:OK
 Result:PASS
 Sample ls & cd pipes:
-  24-April-2025 11:25:47----Piping the output of ls to ls works the same as normal ls:OK
-  24-April-2025 11:25:51----Pipes involving cd do not change the current directory:OK
+  24-April-2025 15:21:20----Piping the output of ls to ls works the same as normal ls:OK
+  24-April-2025 15:21:24----Pipes involving cd do not change the current directory:OK
 Result:PASS
 Sample wc pipe:
-  24-April-2025 11:25:55----Pipe the output of ls to wc displays valid counts:OK
-  24-April-2025 11:25:59----Pipe the output of echo to wc displays valid counts:OK
+  24-April-2025 15:21:28----Pipe the output of ls to wc displays valid counts:OK
+  24-April-2025 15:21:32----Pipe the output of echo to wc displays valid counts:OK
 Result:PASS
 Sample cat pipes:
-  24-April-2025 11:26:03----Cat reading input from echo:OK
-  24-April-2025 11:26:07----Cat builtin supports pipes:OK
+  24-April-2025 15:21:36----Cat reading input from echo:OK
+  24-April-2025 15:21:40----Cat builtin supports pipes:OK
 Result:PASS
 Pipes with variables:
-  24-April-2025 11:26:11----Variable declaration in pipes is not reflected:NOT OK (TIMEOUT)
-  24-April-2025 11:26:15----Variable re-define in pipes is not reflected:NOT OK (TIMEOUT)
-Result:FAIL
+  24-April-2025 15:21:44----Variable declaration in pipes is not reflected:OK
+  24-April-2025 15:21:48----Variable re-define in pipes is not reflected:OK
+Result:PASS
 Pipes Error Handling:
-  24-April-2025 11:26:19----Pipe line cannot exceed the character limit:OK
-  24-April-2025 11:26:23----A failing command does not stop the pipe chain:NOT OK (TIMEOUT)
-Result:FAIL
+  24-April-2025 15:21:52----Pipe line cannot exceed the character limit:OK
+  24-April-2025 15:21:56----A failing command does not stop the pipe chain:OK
+Result:PASS
 Pipe Edge Cases:
-  24-April-2025 11:26:27----Spaces are not required within pipes:OK
-  24-April-2025 11:26:31----Pipe to a command that does not exist reports unknown error:OK
+  24-April-2025 15:22:00----Spaces are not required within pipes:OK
+  24-April-2025 15:22:04----Pipe to a command that does not exist reports unknown error:OK
 Result:PASS
 Three Level pipes:
-  24-April-2025 11:26:35----Cat builtin supports nested pipes:OK
-  24-April-2025 11:26:39----Three-level pipe with echo, cat, and wc:OK
+  24-April-2025 15:22:08----Cat builtin supports nested pipes:OK
+  24-April-2025 15:22:12----Three-level pipe with echo, cat, and wc:OK
 Result:PASS
 Bash Commands are executed correctly:
-  24-April-2025 11:26:43----Bash Builtins are fetched and do not report errors:OK
-  24-April-2025 11:26:47----Command that do not exist report errors:NOT OK
-  24-April-2025 11:26:51----tail command works correctly:OK
+  24-April-2025 15:22:16----Bash Builtins are fetched and do not report errors:OK
+  24-April-2025 15:22:20----Command that do not exist report errors:NOT OK
+  24-April-2025 15:22:24----tail command works correctly:OK
 Result:FAIL
 Bash Commands support pipes:
-  24-April-2025 11:26:55----tail command supports pipes:OK
-  24-April-2025 11:26:59----head command supports pipes:OK
+  24-April-2025 15:22:28----tail command supports pipes:OK
+  24-April-2025 15:22:32----head command supports pipes:OK
 Result:PASS
 Sample bg runs:
-  24-April-2025 11:27:03----A simple background echo correctly completes:OK
-  24-April-2025 11:27:10----Shell can execute other commands while a background process runs:OK
-  24-April-2025 11:27:15----Shell can execute multiple background processes:OK
+  24-April-2025 15:22:36----A simple background echo correctly completes:OK
+  24-April-2025 15:22:42----Shell can execute other commands while a background process runs:OK
+  24-April-2025 15:22:48----Shell can execute multiple background processes:OK
 Result:PASS
 Sample ps runs:
-  24-April-2025 11:27:21----ps command shows a background process:OK
-  24-April-2025 11:27:27----ps command shows multiple background processes:OK
+  24-April-2025 15:22:54----ps command shows a background process:OK
+  24-April-2025 15:23:00----ps command shows multiple background processes:OK
 Result:PASS
 Background jobs finish correctly:
-  24-April-2025 11:27:33----Background process completes with a corresponding DONE message:OK
-  24-April-2025 11:27:40----Background process is DONE after terminated by a kill:OK
+  24-April-2025 15:23:06----Background process completes with a corresponding DONE message:OK
+  24-April-2025 15:23:12----Background process is DONE after terminated by a kill:OK
 Result:PASS
 bg edge cases:
-  24-April-2025 11:27:46----Background process counts reset to 1 after all processes complete:OK
-  24-April-2025 11:27:52----Background process line cannot exceed character limits:OK
+  24-April-2025 15:23:18----Background process counts reset to 1 after all processes complete:OK
+  24-April-2025 15:23:24----Background process line cannot exceed character limits:OK
 Result:PASS
 bg integrations tests:
-  24-April-2025 11:27:58----Pipes work correctly while background process runs:OK
+  24-April-2025 15:23:30----Pipes work correctly while background process runs:OK
 Result:PASS
 Shell survives a control C:
-  24-April-2025 11:28:04----A shell can survive a SIGINT signal:OK
+  24-April-2025 15:23:36----A shell can survive a SIGINT signal:OK
 Result:PASS
 Sample kill runs:
-  24-April-2025 11:28:08----A shell can terminate another shell:OK
-  24-April-2025 11:28:12----A shell can terminate another shell by sending a signal:OK
+  24-April-2025 15:23:40----A shell can terminate another shell:OK
+  24-April-2025 15:23:45----A shell can terminate another shell by sending a signal:OK
 Result:PASS
 Kill error handling:
-  24-April-2025 11:28:16----kill reports an error if the pid is invalid:OK
-  24-April-2025 11:28:20----Program reports an error if the signal is invalid:OK
+  24-April-2025 15:23:49----kill reports an error if the pid is invalid:OK
+  24-April-2025 15:23:53----Program reports an error if the signal is invalid:OK
 Result:PASS
 Kill Integration Tests:
-  24-April-2025 11:28:24----A shell can terminate another shell while accepting variables:OK
+  24-April-2025 15:23:57----A shell can terminate another shell while accepting variables:OK
 Result:PASS
 Server commands are setup correctly:
-  24-April-2025 11:28:28----Able to launch and close a server correctly:OK
-  24-April-2025 11:28:32----Server reports an error when launched without a port:OK
-  24-April-2025 11:28:36----Server shuts down after shell exits:OK
+  24-April-2025 15:24:01----Able to launch and close a server correctly:OK
+  24-April-2025 15:24:05----Server reports an error when launched without a port:OK
+  24-April-2025 15:24:09----Server shuts down after shell exits:OK
 Result:PASS
 Sample send runs:
-  24-April-2025 11:28:41----A shell can exchange a message with itself through a socket:NOT OK
-  24-April-2025 11:28:45----Two separate shells can exchange a message:NOT OK
+  24-April-2025 15:24:14----A shell can exchange a message with itself through a socket:NOT OK
+  24-April-2025 15:24:18----Two separate shells can exchange a message:NOT OK
 Result:FAIL
 Send edge cases are handled correctly:
-  24-April-2025 11:28:49----An error when on an occupied port:OK
-  24-April-2025 11:28:53----Shell messages ignore extra spaces:NOT OK
-  24-April-2025 11:28:57----Simple shell messages expand variables:NOT OK
+  24-April-2025 15:24:22----An error when on an occupied port:OK
+  24-April-2025 15:24:26----Shell messages ignore extra spaces:NOT OK
+  24-April-2025 15:24:30----Simple shell messages expand variables:NOT OK
 Result:FAIL
 Advanced tests:
-  24-April-2025 11:29:01----Ten separate shells can send messages:NOT OK
-  24-April-2025 11:29:11----Pipes work while a server is running:OK
+  24-April-2025 15:24:34----Ten separate shells can send messages:NOT OK
+  24-April-2025 15:24:44----Pipes work while a server is running:OK
 Result:FAIL
 Long client single message:
-  24-April-2025 11:29:13----A shell can exchange a message with another shell through start-client:NOT OK
-  24-April-2025 11:29:18----A shell can exchange a message with another shell through start-client v2:NOT OK
+  24-April-2025 15:24:46----A shell can exchange a message with another shell through start-client:NOT OK
+  24-April-2025 15:24:51----A shell can exchange a message with another shell through start-client v2:NOT OK
 Result:FAIL
 Long client multiple messages:
-  24-April-2025 11:29:23----A client launched with start-client can send multiple messages:NOT OK
+  24-April-2025 15:24:56----A client launched with start-client can send multiple messages:NOT OK
 Result:FAIL
 Multiple clients single message:
-  24-April-2025 11:29:33----Multiple clients single message:NOT OK -- missing client id
+  24-April-2025 15:25:06----Multiple clients single message:NOT OK -- missing client id
 Result:FAIL
 Connected command:
-  24-April-2025 11:29:40----Connected command:NOT OK
+  24-April-2025 15:25:13----Connected command:NOT OK
 Result:FAIL
-24-April-2025 11:29:47--- Test Suites Passed 39.0/52
-24-April-2025 11:29:47 FINISHED
+24-April-2025 15:25:20--- Test Suites Passed 43.0/52
+24-April-2025 15:25:20 FINISHED
