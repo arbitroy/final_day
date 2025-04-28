@@ -106,6 +106,7 @@ const char* get_variable(const char *key) {
  * The caller must free the returned string when done.
  */
 char* expand_variables(const char *str) {
+
     if (str == NULL) {
         return NULL;
     }
@@ -175,6 +176,7 @@ char* expand_variables(const char *str) {
             }
         }
     }
+
     
     return result;
 }
