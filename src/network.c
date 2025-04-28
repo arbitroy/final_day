@@ -31,11 +31,13 @@ static server_info_t server_info = {-1, -1, 0, -1};
 static int client_count = 0;
 static int connected_clients = 0;
 static int client_sockets[MAX_CLIENTS];
+static int client_ids[MAX_CLIENTS]; // Track unique client IDs
 
 // Initialize all client sockets to -1 (invalid)
 void init_client_sockets() {
     for (int i = 0; i < MAX_CLIENTS; i++) {
         client_sockets[i] = -1;
+        client_ids[i] = -1;
     }
     // Reset connected clients count
     connected_clients = 0;
@@ -49,6 +51,7 @@ void init_server_info(void) {
     server_info.running = 0;
     server_info.server_pid = -1;
     init_client_sockets();
+    client_count = 0; // Reset client counter on initialization
 }
 
 // Clean up server resources
@@ -76,11 +79,12 @@ void cleanup_server(void) {
 }
 
 // Function to broadcast message to all connected clients
-void broadcast_message(const char *message, int exclude_fd) {
+void broadcast_message(const char *message, int exclude_fd __attribute__((unused))) {
     if (message == NULL) return;
     
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (client_sockets[i] >= 0 && client_sockets[i] != exclude_fd) {
+        // Only check if socket is valid, don't exclude the sender
+        if (client_sockets[i] >= 0) {
             // Try to send the message
             ssize_t bytes_sent = send(client_sockets[i], message, strlen(message), 0);
             if (bytes_sent < 0) {
@@ -143,21 +147,25 @@ void handle_new_connection(int server_fd) {
         return;
     }
 
-    // Store the client socket
-    client_sockets[slot] = client_fd;
-    connected_clients++;
+    // Increment client count before assigning IDs
     client_count++;
+    
+    // Store the client socket and assign unique ID
+    client_sockets[slot] = client_fd;
+    client_ids[slot] = client_count;
+    connected_clients++;
 
-    // Send a welcome message to the new client
+    // Send a welcome message to the new client - format without #
     char welcome[BUFFER_SIZE];
-    snprintf(welcome, BUFFER_SIZE, "Welcome! You are client#%d\n", client_count);
+    snprintf(welcome, BUFFER_SIZE, "Welcome! You are client%d\n", client_count);
     send(client_fd, welcome, strlen(welcome), 0);
 
     // Display a message on the server
     char info[BUFFER_SIZE];
-    snprintf(info, BUFFER_SIZE, "New connection: client#%d\n", client_count);
+    snprintf(info, BUFFER_SIZE, "New connection: client%d\n", client_count);
     display_message(info);
 }
+
 
 // Handle received data from a client
 void handle_client_data(int client_fd, int client_index) {
@@ -202,25 +210,23 @@ void handle_client_data(int client_fd, int client_index) {
     // Check for special command
     if (strcmp(buffer, "\\connected") == 0) {
         char response[BUFFER_SIZE];
-        snprintf(response, BUFFER_SIZE, "client#%d: There are %d clients connected\n",
-                client_index + 1, connected_clients);
+        // Use client ID without # character
+        snprintf(response, BUFFER_SIZE, "client%d: There are %d clients connected\n",
+                client_ids[client_index], connected_clients);
 
-        // Send to the client that requested it
-        send(client_fd, response, strlen(response), 0);
-        
-        // Also send to other clients
-        broadcast_message(response, client_fd);
+        // Send to all clients (including the sender)
+        broadcast_message(response, -1);
         
         // Display on server
         display_message(response);
         return;
     }
 
-    // Format message with client ID
+    // Format message with client ID (no # character)
     char formatted_msg[BUFFER_SIZE];
-    snprintf(formatted_msg, BUFFER_SIZE, "client#%d: %s\n", client_index + 1, buffer);
+    snprintf(formatted_msg, BUFFER_SIZE, "client%d: %s\n", client_ids[client_index], buffer);
 
-    // Broadcast the message to all clients
+    // Broadcast to all clients (including sender)
     broadcast_message(formatted_msg, -1);
     
     // Display on server
@@ -421,7 +427,7 @@ ssize_t cmd_start_server(char **tokens) {
 
     // Initialize client sockets array
     init_client_sockets();
-    client_count = 0;
+    client_count = 0; // Reset client counter when starting server
     connected_clients = 0;
     
     // Avoid zombie processes - ignore SIGCHLD
@@ -576,7 +582,7 @@ int send_message(int port, const char *hostname, const char *message) {
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
 
     // Try to establish a connection several times
-    int retries = 3;
+    int retries = 5; // Increase retries
     int connected = 0;
     
     while (retries-- > 0 && !connected) {
@@ -586,7 +592,7 @@ int send_message(int port, const char *hostname, const char *message) {
         }
         
         // Small delay before retry
-        usleep(100000);  // 100ms
+        usleep(200000);  // 200ms - longer delay
     }
     
     if (!connected) {
@@ -606,31 +612,38 @@ int send_message(int port, const char *hostname, const char *message) {
         return -1;
     }
 
+    // Normalize the message by removing extra spaces
+    char normalized_message[BUFFER_SIZE];
+    int j = 0;
+    int in_space = 0;
+    
+    for (int i = 0; message[i] != '\0' && j < BUFFER_SIZE - 2; i++) {
+        if (message[i] == ' ' || message[i] == '\t') {
+            if (!in_space) {
+                normalized_message[j++] = ' ';
+                in_space = 1;
+            }
+        } else {
+            normalized_message[j++] = message[i];
+            in_space = 0;
+        }
+    }
+    normalized_message[j] = '\0';
+
     // Send message
-    ssize_t sent = send(sockfd, message, strlen(message), 0);
+    ssize_t sent = send(sockfd, normalized_message, strlen(normalized_message), 0);
     if (sent < 0) {
         close(sockfd);
         return -1;
     }
 
     // Add newline if not present
-    if (sent > 0 && message[strlen(message) - 1] != '\n') {
+    if (sent > 0 && normalized_message[strlen(normalized_message) - 1] != '\n') {
         send(sockfd, "\n", 1, 0);
     }
 
-    // Read server response to confirm message was processed
-    char response[64];
-    struct timeval recv_tv;
-    recv_tv.tv_sec = 1;
-    recv_tv.tv_usec = 0;
-    
-    fd_set read_set;
-    FD_ZERO(&read_set);
-    FD_SET(sockfd, &read_set);
-    
-    if (select(sockfd + 1, &read_set, NULL, NULL, &recv_tv) > 0) {
-        recv(sockfd, response, sizeof(response) - 1, MSG_DONTWAIT);
-    }
+    // Give some time for the message to be processed
+    usleep(100000); // 100ms
 
     // Close socket
     close(sockfd);
@@ -657,15 +670,34 @@ ssize_t cmd_send(char **tokens) {
         return -1;
     }
     
-    // Parse port number
-    int port = atoi(tokens[1]);
+    // Expand variables in port and hostname if needed
+    char *expanded_port = NULL;
+    if (strchr(tokens[1], '$') != NULL) {
+        expanded_port = expand_variables(tokens[1]);
+    }
+    
+    char *expanded_hostname = NULL;
+    if (strchr(tokens[2], '$') != NULL) {
+        expanded_hostname = expand_variables(tokens[2]);
+    }
+    
+    // Parse port number (use expanded port if available)
+    int port;
+    if (expanded_port != NULL) {
+        port = atoi(expanded_port);
+        free(expanded_port);
+    } else {
+        port = atoi(tokens[1]);
+    }
+    
     if (port <= 0 || port > 65535) {
+        if (expanded_hostname != NULL) free(expanded_hostname);
         display_error("ERROR: Invalid port number", "");
         return -1;
     }
     
-    // Get hostname
-    char *hostname = tokens[2];
+    // Get hostname (use expanded hostname if available)
+    char *hostname = expanded_hostname != NULL ? expanded_hostname : tokens[2];
     
     // Combine all remaining tokens into a message
     char message[BUFFER_SIZE] = "";
@@ -676,8 +708,24 @@ ssize_t cmd_send(char **tokens) {
         strcat(message, tokens[i]);
     }
     
-    // Send the message
-    if (send_message(port, hostname, message) < 0) {
+    // Expand variables in the message
+    char *expanded_message = expand_variables(message);
+    
+    // Send the message (use expanded message if available)
+    int result;
+    if (expanded_message != NULL) {
+        result = send_message(port, hostname, expanded_message);
+        free(expanded_message);
+    } else {
+        result = send_message(port, hostname, message);
+    }
+    
+    // Free expanded hostname if it was allocated
+    if (expanded_hostname != NULL) {
+        free(expanded_hostname);
+    }
+    
+    if (result < 0) {
         display_error("ERROR: Failed to send message", "");
         return -1;
     }
@@ -741,19 +789,39 @@ ssize_t cmd_start_client(char **tokens) {
         return -1;
     }
     
-    // Parse port number
-    int port = atoi(tokens[1]);
+    // Expand variables in port and hostname if needed
+    char *expanded_port = NULL;
+    if (strchr(tokens[1], '$') != NULL) {
+        expanded_port = expand_variables(tokens[1]);
+    }
+    
+    char *expanded_hostname = NULL;
+    if (strchr(tokens[2], '$') != NULL) {
+        expanded_hostname = expand_variables(tokens[2]);
+    }
+    
+    // Parse port number (use expanded port if available)
+    int port;
+    if (expanded_port != NULL) {
+        port = atoi(expanded_port);
+        free(expanded_port);
+    } else {
+        port = atoi(tokens[1]);
+    }
+    
     if (port <= 0 || port > 65535) {
+        if (expanded_hostname != NULL) free(expanded_hostname);
         display_error("ERROR: Invalid port number", "");
         return -1;
     }
     
-    // Get hostname
-    char *hostname = tokens[2];
+    // Get hostname (use expanded hostname if available)
+    char *hostname = expanded_hostname != NULL ? expanded_hostname : tokens[2];
     
     // Create socket
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
+        if (expanded_hostname != NULL) free(expanded_hostname);
         display_error("ERROR: Failed to create socket", "");
         return -1;
     }
@@ -761,6 +829,7 @@ ssize_t cmd_start_client(char **tokens) {
     // Get host information
     struct hostent *host = gethostbyname(hostname);
     if (host == NULL) {
+        if (expanded_hostname != NULL) free(expanded_hostname);
         display_error("ERROR: Failed to resolve hostname", "");
         close(sockfd);
         return -1;
@@ -775,9 +844,15 @@ ssize_t cmd_start_client(char **tokens) {
     
     // Connect to server
     if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        if (expanded_hostname != NULL) free(expanded_hostname);
         display_error("ERROR: Failed to connect to server", "");
         close(sockfd);
         return -1;
+    }
+    
+    // Free expanded hostname if it was allocated
+    if (expanded_hostname != NULL) {
+        free(expanded_hostname);
     }
     
     display_message("Connected to server. Type messages to send. Use CTRL+D to exit.\n");

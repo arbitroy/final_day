@@ -313,15 +313,15 @@ ssize_t cmd_ps(char **tokens __attribute__((unused)))
 // Check if a command exists in PATH
 int command_exists(const char *cmd)
 {
-    debug_log("Checking if command exists: %s", cmd);
+    // Check for null command
+    if (cmd == NULL || cmd[0] == '\0')
+        return 0;
 
     // Check absolute path
     if (cmd[0] == '/')
     {
-        debug_log("Checking absolute path: %s", cmd);
         if (access(cmd, X_OK) == 0)
         {
-            debug_log("Command found at absolute path");
             return 1;
         }
         return 0;
@@ -332,32 +332,26 @@ int command_exists(const char *cmd)
 
     // Check in /bin
     snprintf(path, MAX_STR_LEN, "/bin/%s", cmd);
-    debug_log("Checking path: %s", path);
     if (access(path, X_OK) == 0)
     {
-        debug_log("Command found in /bin");
         return 1;
     }
 
     // Check in /usr/bin
     snprintf(path, MAX_STR_LEN, "/usr/bin/%s", cmd);
-    debug_log("Checking path: %s", path);
     if (access(path, X_OK) == 0)
     {
-        debug_log("Command found in /usr/bin");
         return 1;
     }
 
     // Check using PATH environment variable
     const char *path_env = getenv("PATH");
-    debug_log("PATH environment variable: %s", path_env ? path_env : "NULL");
 
     if (path_env)
     {
         char *path_copy = strdup(path_env);
         if (path_copy == NULL)
         {
-            debug_log("Failed to allocate memory for PATH copy");
             return 0;
         }
 
@@ -366,11 +360,9 @@ int command_exists(const char *cmd)
         while (dir != NULL)
         {
             snprintf(path, MAX_STR_LEN, "%s/%s", dir, cmd);
-            debug_log("Checking path: %s", path);
 
             if (access(path, X_OK) == 0)
             {
-                debug_log("Command found in PATH: %s", path);
                 free(path_copy);
                 return 1;
             }
@@ -381,11 +373,114 @@ int command_exists(const char *cmd)
         free(path_copy);
     }
 
-    debug_log("Command not found: %s", cmd);
+    // If we've reached here, the command doesn't exist
     return 0;
 }
 
 // Execute a command with pipe support
+int execute_system_command(char **tokens, int input_fd, int output_fd, int in_background)
+{
+    if (tokens == NULL || tokens[0] == NULL)
+    {
+        return -1;
+    }
+
+    // Verify the command exists before attempting to execute it
+    if (!command_exists(tokens[0]))
+    {
+        display_error("ERROR: Unknown command: ", tokens[0]);
+        return -1;
+    }
+
+    // Create a child process to execute the command
+    pid_t pid = fork();
+
+    if (pid == -1)
+    {
+        display_error("ERROR: Failed to fork", "");
+        if (input_fd != STDIN_FILENO)
+        {
+            close(input_fd);
+        }
+        if (output_fd != STDOUT_FILENO)
+        {
+            close(output_fd);
+        }
+        return -1;
+    }
+    else if (pid == 0)
+    {
+        // Child process
+
+        // Redirect input if needed
+        if (input_fd != STDIN_FILENO)
+        {
+            if (dup2(input_fd, STDIN_FILENO) == -1)
+            {
+                perror("dup2 stdin");
+                exit(EXIT_FAILURE);
+            }
+            close(input_fd);
+        }
+
+        // Redirect output if needed
+        if (output_fd != STDOUT_FILENO)
+        {
+            if (dup2(output_fd, STDOUT_FILENO) == -1)
+            {
+                perror("dup2 stdout");
+                exit(EXIT_FAILURE);
+            }
+            close(output_fd);
+        }
+
+        // Execute the command
+        execvp(tokens[0], tokens);
+        
+        // If execvp returns, there was an error
+        display_error("ERROR: Failed to execute command: ", tokens[0]);
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        // Parent process
+
+        // Close pipe ends in parent
+        if (input_fd != STDIN_FILENO)
+        {
+            close(input_fd);
+        }
+        if (output_fd != STDOUT_FILENO)
+        {
+            close(output_fd);
+        }
+
+        if (in_background)
+        {
+            // Background process, don't wait
+            char command_str[MAX_STR_LEN] = "";
+            for (int i = 0; tokens[i] != NULL; i++)
+            {
+                if (i > 0)
+                {
+                    strcat(command_str, " ");
+                }
+                strcat(command_str, tokens[i]);
+            }
+            add_bg_process(pid, command_str);
+            return 0;
+        }
+        else
+        {
+            // Foreground process, wait for completion
+            int status;
+            waitpid(pid, &status, 0);
+            return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        }
+    }
+}
+
+
 int execute_command(char **tokens, int input_fd, int output_fd, int in_background)
 {
     if (tokens == NULL || tokens[0] == NULL)
@@ -491,134 +586,7 @@ int execute_command(char **tokens, int input_fd, int output_fd, int in_backgroun
     else
     {
         // Not a builtin, execute as system command
-        pid_t pid = fork();
-
-        if (pid == -1)
-        {
-            display_error("ERROR: Failed to fork", "");
-            if (input_fd != STDIN_FILENO)
-            {
-                safe_close(input_fd);
-            }
-            if (output_fd != STDOUT_FILENO)
-            {
-                safe_close(output_fd);
-            }
-            return -1;
-        }
-        else if (pid == 0)
-        {
-            // Child process
-            debug_log("Child process for command: %s", tokens[0]);
-
-            // Redirect input if needed
-            if (input_fd != STDIN_FILENO)
-            {
-                if (dup2(input_fd, STDIN_FILENO) == -1)
-                {
-                    perror("dup2 stdin");
-                    exit(EXIT_FAILURE);
-                }
-                safe_close(input_fd);
-            }
-
-            // Keep a copy of stderr for error messages
-            int stderr_copy = dup(STDERR_FILENO);
-            if (stderr_copy == -1)
-            {
-                perror("dup stderr");
-                exit(EXIT_FAILURE);
-            }
-
-            // Redirect output if needed
-            if (output_fd != STDOUT_FILENO)
-            {
-                if (dup2(output_fd, STDOUT_FILENO) == -1)
-                {
-                    perror("dup2 stdout");
-                    exit(EXIT_FAILURE);
-                }
-                safe_close(output_fd);
-            }
-
-            // Execute the command
-            if (command_exists(tokens[0]))
-            {
-                debug_log("Executing system command: %s", tokens[0]);
-                execvp(tokens[0], tokens);
-                // If execvp returns, there was an error
-                // Use the stderr copy to ensure error message is visible
-                dup2(stderr_copy, STDERR_FILENO);
-                display_error("ERROR: Command failed: ", tokens[0]);
-                close(stderr_copy);
-                exit(EXIT_FAILURE);
-            }
-            else
-            {
-                // Use stderr copy for error message
-                dup2(stderr_copy, STDERR_FILENO);
-                display_error("ERROR: Unknown command: ", tokens[0]);
-                close(stderr_copy);
-                exit(EXIT_FAILURE);
-            }
-        }
-        else
-        {
-            // Parent process
-            debug_log("Parent process after fork, child pid: %d", pid);
-
-            // Close pipe ends in parent if we're using pipes
-            if (input_fd != STDIN_FILENO)
-            {
-                safe_close(input_fd);
-            }
-            if (output_fd != STDOUT_FILENO)
-            {
-                safe_close(output_fd);
-            }
-
-            if (in_background)
-            {
-                // Background process, don't wait
-                char command_str[MAX_STR_LEN] = "";
-
-                // Reconstruct the command string without the &
-                for (int i = 0; tokens[i] != NULL; i++)
-                {
-                    if (i > 0)
-                    {
-                        strcat(command_str, " ");
-                    }
-                    strcat(command_str, tokens[i]);
-                }
-
-                // Ensure we're adding to the background process list correctly
-                debug_log("Adding background process: pid=%d, command=%s", pid, command_str);
-                int job_id = add_bg_process(pid, command_str);
-                if (job_id == -1)
-                {
-                    display_error("ERROR: Failed to add background process", "");
-                }
-
-                return 0;
-            }
-            else
-            {
-                // Foreground process, wait for completion
-                int status;
-                debug_log("Waiting for foreground process: pid=%d", pid);
-                waitpid(pid, &status, 0);
-                debug_log("Foreground process completed: pid=%d, status=%d", pid, status);
-
-                // KEY CHANGE: Always return 0 in a pipe chain, even if a command fails
-                // This ensures the pipeline doesn't block waiting for the next command
-                if (input_fd != STDIN_FILENO || output_fd != STDOUT_FILENO)
-                {
-                    return 0; // Always continue pipe chains
-                }
-                return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-            }
-        }
+        return execute_system_command(tokens, input_fd, output_fd, in_background);
     }
 }
 
