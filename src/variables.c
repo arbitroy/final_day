@@ -105,7 +105,6 @@ const char* get_variable(const char *key) {
  * Returns a newly allocated string with variables expanded.
  * The caller must free the returned string when done.
  */
-// In variables.c, update expand_variables function:
 char* expand_variables(const char *str) {
     if (str == NULL) {
         return NULL;
@@ -268,14 +267,24 @@ void free_variables(void) {
     
     while (current != NULL) {
         next = current->next;
-        free(current->key);
-        free(current->value);
+        
+        // Ensure key and value are properly freed
+        if (current->key != NULL) {
+            free(current->key);
+            current->key = NULL;
+        }
+        
+        if (current->value != NULL) {
+            free(current->value);
+            current->value = NULL;
+        }
+        
         free(current);
         current = next;
     }
+    
     var_list = NULL;
 }
-
 /*
  * Free a specific variable list.
  * This is useful for freeing duplicated variable lists.

@@ -82,12 +82,23 @@ ssize_t get_input(char *in_ptr)
  * Warning: in_ptr is modified
  * Return: number of tokens.
  */
+
 size_t tokenize_input(char *in_ptr, char **tokens) {
-    // Remove the unused variable and check
+    // Check if this is an echo command
+    int is_echo_command = 0;
+    char *echo_cmd = strstr(in_ptr, "echo ");
+    
+    // Only consider it an echo command if it's at the beginning or after a pipe
+    if (echo_cmd == in_ptr || (echo_cmd > in_ptr && *(echo_cmd-1) == ' ' && 
+                              (echo_cmd > in_ptr+1 && *(echo_cmd-2) == '|'))) {
+        is_echo_command = 1;
+    }
+
     // First, explicitly handle special characters by ensuring they are surrounded by spaces
     char *temp_ptr = in_ptr;
     while (*temp_ptr != '\0') {
-        if (*temp_ptr == '|' || *temp_ptr == '&') {
+        // We're looking for pipe characters (|) and standalone background characters (&)
+        if (*temp_ptr == '|' || (*temp_ptr == '&' && !is_echo_command)) {
             // Insert spaces around character if needed
             if (temp_ptr > in_ptr && *(temp_ptr - 1) != ' ') {
                 // Shift everything right to make room for a space before character
@@ -107,7 +118,52 @@ size_t tokenize_input(char *in_ptr, char **tokens) {
                 temp_ptr += 1; // Skip the space
             }
         } else {
-            temp_ptr++;
+            // Special handling for & character in echo arguments
+            if (is_echo_command && *temp_ptr == '&') {
+                // If we're in an echo command and found an & within the echo arguments,
+                // we should check if it's meant to be a background process marker
+
+                // It's a background process marker if it's at the end of the command
+                // or followed by only whitespace
+                char *check_ptr = temp_ptr + 1;
+                int is_bg_marker = 1;
+
+                // Skip whitespace
+                while (*check_ptr == ' ' || *check_ptr == '\t') {
+                    check_ptr++;
+                }
+
+                // If there's more content, it's not a background process marker
+                if (*check_ptr != '\0') {
+                    is_bg_marker = 0;
+                }
+
+                if (is_bg_marker) {
+                    // This is a background marker, handle it like other special characters
+                    if (temp_ptr > in_ptr && *(temp_ptr - 1) != ' ') {
+                        // Shift everything right to make room for a space before character
+                        size_t rest_len = strlen(temp_ptr);
+                        memmove(temp_ptr + 1, temp_ptr, rest_len + 1); // +1 for null terminator
+                        *temp_ptr = ' ';
+                        temp_ptr += 2; // Skip the space and the special character
+                    } else {
+                        temp_ptr++; // Skip the special character
+                    }
+                    
+                    if (*temp_ptr != ' ' && *temp_ptr != '\0') {
+                        // Shift everything right to make room for a space after character
+                        size_t rest_len = strlen(temp_ptr);
+                        memmove(temp_ptr + 1, temp_ptr, rest_len + 1); // +1 for null terminator
+                        *temp_ptr = ' ';
+                        temp_ptr += 1; // Skip the space
+                    }
+                } else {
+                    // This is a regular & in echo argument, leave it alone
+                    temp_ptr++;
+                }
+            } else {
+                temp_ptr++;
+            }
         }
     }
 
@@ -124,7 +180,6 @@ size_t tokenize_input(char *in_ptr, char **tokens) {
     
     return token_count;
 }
-
 /* Combines multiple tokens into a single string with spaces in between
  * Prereq: tokens is a NULL-terminated array of strings
  * Returns: A newly allocated string that must be freed by the caller
