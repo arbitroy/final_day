@@ -682,10 +682,6 @@ ssize_t cmd_send(char **tokens) {
         return -1;
     }
     
-    // Also display the message on our screen
-    display_message(message);
-    display_message("\n");
-    
     return 0;
 }
 
